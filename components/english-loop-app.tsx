@@ -44,7 +44,6 @@ import StudentCreateModal from "@/components/student-create-modal";
 import { PinChangeCard, StudentPinResetModal } from "@/components/pin-security";
 import StudentTaskStrip from "@/components/student-task-strip";
 import LearningMaterialPanel from "@/components/learning-material-panel";
-import YouTubeThumbnail from "@/components/youtube-thumbnail";
 import { SPEAKING_RUBRIC, RUBRIC_NAME, rubricOverall, rubricPerformanceLabel } from "@/lib/speaking-rubric";
 import {
   demoActivities,
@@ -408,6 +407,7 @@ function ActivityExperience({
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioSeconds, setAudioSeconds] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const meta = typeMeta[content.content_type];
   const Icon = meta.icon;
   const steps = ["Learn", "Understand", "Speak", "Reflect"];
@@ -415,9 +415,12 @@ function ActivityExperience({
   async function finish() {
     if (!audioBlob) return;
     setBusy(true);
+    setSubmitError("");
     try {
       await onSubmit({ answers, confidence, difficulty, note, audioBlob, audioSeconds });
       setStep(4);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Submission failed. Please try again.");
     } finally { setBusy(false); }
   }
 
@@ -463,6 +466,7 @@ function ActivityExperience({
           <div className="reflection-card"><label>How confident were you?</label><div className="scale-row">{[1,2,3,4,5].map((n) => <button key={n} className={classNames(confidence === n && "selected")} onClick={() => setConfidence(n)}>{n}</button>)}</div><div className="scale-labels"><span>Not yet</span><span>Very confident</span></div></div>
           <div className="reflection-card"><label>How difficult was this activity?</label><div className="segmented">{["easy","medium","difficult"].map((item) => <button key={item} className={classNames(difficulty === item && "selected")} onClick={() => setDifficulty(item)}>{item[0].toUpperCase()+item.slice(1)}</button>)}</div></div>
           <div className="reflection-card"><label>What was difficult? <span>Optional</span></label><textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="I paused when I tried to…" /></div>
+          {submitError&&<p role="alert" className="form-error">Could not submit: {submitError}. Your recording is still here; please try again.</p>}
           <button className="btn btn-primary btn-lg activity-next" disabled={busy} onClick={finish}>{busy ? <Loader2 className="spin" size={18} /> : <Send size={18} />} {busy ? "Submitting…" : "Submit speaking"}</button>
         </div>}
 
@@ -484,7 +488,7 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   const [responses, setResponses] = useState<ResponseRow[]>([]);
   const [speaking, setSpeaking] = useState<SpeakingRow[]>([]);
   const [feedback, setFeedback] = useState<FeedbackRow[]>([]);
-  const [assignments, setAssignments] = useState<AssignmentRow[]>(isDemo ? demoActivities.slice(0, 3).map((activity, index) => ({
+  const [assignments, setAssignments] = useState<AssignmentRow[]>(isDemo ? demoActivities.filter((a)=>a.pathway_order&&demoContents.find((c)=>c.id===a.content_id)?.cefr_level==="Pre-A1").sort((a,b)=>(a.pathway_order||0)-(b.pathway_order||0)).slice(0,3).map((activity, index) => ({
     id: `demo-assignment-${index + 1}`,
     activity_id: activity.id,
     class_id: "c1",
@@ -533,7 +537,6 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
     { label: "Vocabulary", value: vocabulary.length, icon: BookOpen },
   ];
   const assignedActivityIds = useMemo(() => new Set(assignments.map((item) => item.activity_id)), [assignments]);
-  const assignedActivities = activities.filter((activity) => assignedActivityIds.has(activity.id));
   const taskActivities = activities
     .filter((activity) => {
       const content = contents.find((item) => item.id === activity.content_id);
@@ -545,9 +548,8 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
     if (aAssigned !== bAssigned) return aAssigned - bAssigned;
     return (a.pathway_order ?? 999) - (b.pathway_order ?? 999);
     });
-  const incomplete = assignedActivities.find((a) => !responses.some((r) => r.activity_id === a.id && r.status === "submitted"))
-    || activities.find((a) => !responses.some((r) => r.activity_id === a.id && r.status === "submitted"))
-    || activities[0];
+  const incomplete = taskActivities.find((a) => !responses.some((r) => r.activity_id === a.id && r.status === "submitted"))
+    || taskActivities[0];
   const speakingByResponse = useMemo(() => Object.fromEntries(speaking.map((item) => [item.response_id, item])), [speaking]);
   const feedbackBySpeaking = useMemo(() => Object.fromEntries(feedback.map((item) => [item.speaking_id, item])), [feedback]);
   const activityById = useMemo(() => Object.fromEntries(activities.map((item) => [item.id, item])), [activities]);
@@ -625,29 +627,12 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
           {view === "home" && <div className="student-page">
             <div className="page-intro"><div><div className="eyebrow">YOUR ENGLISH TODAY</div><h1>{greeting()}, {profile.name.split(" ")[0]}.</h1><p>One small loop today is enough to keep your English moving.</p></div><div className="streak-pill"><Flame size={17} /> {isDemo ? 5 : Math.min(completed, 7)} day streak</div></div>
             <section className="student-focus-card">
-              <div className="focus-content"><div className="focus-label"><Sparkles size={14} /> READY WHEN YOU ARE</div><h2>{incomplete?.title || "Choose your next activity"}</h2><p>{incomplete?.speaking_prompt || "Open your task pathway and turn the material into real English practice."}</p><button className="btn btn-light" onClick={() => incomplete && setSelectedActivity(incomplete)}>{incomplete ? "Continue today’s activity" : "Open tasks"} <ArrowRight size={17} /></button></div>
+              <div className="focus-content"><div className="focus-label"><Sparkles size={14} /> YOUR NEXT TASK</div><h2>{incomplete?.title || "Choose your next task"}</h2><p>{incomplete?.speaking_prompt || "Open your task pathway and turn the material into real English practice."}</p><button className="btn btn-light" onClick={() => incomplete ? setSelectedActivity(incomplete) : setView("tasks")}>{incomplete ? "Continue today’s task" : "Open tasks"} <ArrowRight size={17} /></button></div>
               <div className="focus-loop"><div className="focus-ring"><Mic size={28} /></div><span>INPUT</span><i>→</i><span>OUTPUT</span></div>
             </section>
             <div className="stat-grid">{stats.map(({label,value,icon: Icon}) => <div className="stat-card" key={label}><div className="stat-icon"><Icon size={18} /></div><strong>{value}</strong><span>{label}</span></div>)}</div>
-            <StudentTaskStrip assignments={assignments} activities={activities} contents={contents} responses={responses} onOpen={(activity:any)=>setSelectedActivity(activity)} />
-            <div className="section-row"><div><h2>Pick up where you left off</h2><p>Short input. Real speaking.</p></div><button className="text-btn" onClick={() => setView("tasks")}>See all <ArrowRight size={15} /></button></div>
-            <div className="content-scroll">{contents.slice(0,3).map((content) => {
-              const meta = typeMeta[content.content_type]; const Icon = meta.icon; const activity = activities.find((a) => a.content_id === content.id);
-              const isYouTube=(content.material_type||content.format?.toLowerCase())==="youtube";
-              return <article
-                className={classNames("content-card",isYouTube&&"youtube-content-card")}
-                key={content.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => activity && setSelectedActivity(activity)}
-                onKeyDown={(e)=>{if((e.key==="Enter"||e.key===" ")&&activity){e.preventDefault();setSelectedActivity(activity)}}}
-              >
-                {isYouTube
-                  ? <YouTubeThumbnail url={content.content_url} title={content.title} compact />
-                  : <div className={classNames("content-card-art",meta.className)}><Icon size={22} /><span>{content.content_type}</span></div>}
-                <div className="content-card-body"><div className="content-tags"><span>{content.cefr_level}</span><span>{content.duration_minutes} min</span>{isYouTube&&<span>YouTube</span>}</div><h3>{content.title}</h3><p>{content.topic}</p></div><button className="round-arrow" aria-label={`Open ${content.title}`}><ChevronRight size={17} /></button>
-              </article>;
-            })}</div>
+            <StudentTaskStrip assignments={assignments} activities={taskActivities} contents={contents} responses={responses} onOpen={setSelectedActivity} />
+            <button className="text-btn" onClick={() => setView("tasks")}>See the full pathway <ArrowRight size={15} /></button>
           </div>}
 
           {view === "tasks" && <div className="student-page">
@@ -669,7 +654,7 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
                   <div className="content-tags"><span>{content.cefr_level}</span><span><InputIcon size={12}/> {meta.label}</span><span>{content.duration_minutes} min</span>{assigned&&<span className="assigned-tag">Assigned</span>}{done&&<span className="done-tag">Done</span>}</div>
                   <h3>{activity.title}</h3>
                   <p>{content.description || content.topic}</p>
-                  <div className="content-tags"><span>1 Material</span><span>2 Understand</span><span>3 Speak</span><span>4 Submit</span></div>
+                  <div className="content-tags"><span>1 {content.content_type === "listen" ? "Listen & learn" : "Material"}</span><span>2 Read & understand</span><span>3 Speak</span><span>4 Submit</span></div>
                 </div>
                 <button className="btn btn-soft" onClick={()=>setSelectedActivity(activity)}>{done?"Practice again":"Start task"}<ArrowRight size={15}/></button>
               </article>;
@@ -746,7 +731,7 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
 
       <nav className="student-bottom-nav">
         {[
-          ["home","Home",Home],["explore","Explore",Compass],["speak","Speak",Mic],["progress","Progress",BarChart3],["profile","Profile",User]
+          ["home","Home",Home],["tasks","Tasks",ListChecks],["progress","Progress",BarChart3],["profile","Profile",User]
         ].map(([key,label,Icon])=>{const IconComp=Icon as typeof Home; return <button key={key as string} className={classNames(view===key&&"active")} onClick={()=>{setView(key as StudentView);if(key==="progress"&&!isDemo)void loadData()}}><IconComp size={20}/><span>{label as string}</span></button>})}
       </nav>
 

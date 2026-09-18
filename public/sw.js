@@ -1,4 +1,4 @@
-const VERSION = "english-loop-pwa-v1";
+const VERSION = "english-loop-pwa-v2";
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const OFFLINE_URL = "/offline";
@@ -48,18 +48,7 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
-        .then((response) => {
-          if (response.ok) {
-            const copy = response.clone();
-            caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        })
-        .catch(async () => {
-          return (await caches.match(request))
-            || (await caches.match(OFFLINE_URL))
-            || Response.error();
-        })
+        .catch(async () => (await caches.match(OFFLINE_URL)) || Response.error())
     );
     return;
   }

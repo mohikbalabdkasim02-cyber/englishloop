@@ -263,6 +263,13 @@ a { color: inherit; }
 .content-reader { background: white; border: 1px solid var(--line); border-radius: 22px; padding: 28px; }
 .reader-meta { display: flex; justify-content: space-between; gap: 20px; color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; font-weight: 800; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .content-reader p { font-family: Georgia, serif; font-size: 18px; line-height: 1.85; color: #343c39; }
+.listening-sample { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:16px 0; padding:18px; border-radius:16px; background:#e9f5f7; }
+.listening-sample > div { display:grid; flex:1; min-width:180px; gap:3px; }
+.listening-sample strong { font-size:14px; }
+.listening-sample small { color:var(--muted); font-size:11px; }
+.listening-transcript { margin-top:16px; }
+.listening-transcript summary { cursor:pointer; font-weight:800; font-size:13px; }
+.listening-transcript p { white-space:pre-line; }
 .notice { background: #f0f1ed; border-radius: 15px; padding: 14px; display: flex; gap: 10px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .notice svg { color: var(--primary); flex: 0 0 auto; }
 .activity-next { justify-self: end; }
