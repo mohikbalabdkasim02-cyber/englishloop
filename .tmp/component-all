@@ -482,4 +482,96 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
     if (activityRes.data) setActivities(activityRes.data as ActivityItem[]);
     if (questionRes.data) setQuestions(questionRes.data as QuestionItem[]);
     if (responseRes.data) setResponses(responseRes.data as ResponseRow[]);
-    if (speakRes.data) setSpeaking(speakRes.
+    if (speakRes.data) setSpeaking(speakRes.data) setSpeaking(speakRes.data as SpeakingRow[]);
+    if (feedbackRes.data) setFeedback(feedbackRes.data as FeedbackRow[]);
+    if (vocabRes.data) setVocabulary(vocabRes.data as typeof vocabulary);
+    setLoading(false);
+  }, [isDemo, profile.id]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const completed = responses.filter((r) => r.status === "submitted").length + (isDemo ? 7 : 0);
+  const speakingSeconds = speaking.reduce((sum, row) => sum + row.duration_seconds, 0) + (isDemo ? 684 : 0);
+  const stats = [
+    { label: "Activities", value: completed, icon: CheckCircle2 },
+    { label: "Speaking", value: speaking.length + (isDemo ? 8 : 0), icon: Mic },
+    { label: "Minutes", value: Math.round(speakingSeconds / 60), icon: Clock3 },
+    { label: "Vocabulary", value: vocabulary.length + (isDemo ? 28 : 0), icon: BookOpen },
+  ];
+  const incomplete = activities.find((a) => !responses.some((r) => r.activity_id === a.id && r.status === "submitted")) || activities[0];
+  const filteredContents = contents.filter((item) => (filter === "all" || item.content_type === filter) && `${item.title} ${item.topic}`.toLowerCase().includes(search.toLowerCase()));
+
+  async function submitActivity(payload: { answers: Record<string, string>; confidence: number; difficulty: string; note: string; audioBlob: Blob; audioSeconds: number }) {
+    if (!selectedActivity) return;
+    if (isDemo) {
+      const responseId = `demo-${Date.now()}`;
+      setResponses((old) => [{ id: responseId, student_id: profile.id, activity_id: selectedActivity.id, answers: payload.answers, confidence: payload.confidence, difficulty: payload.difficulty, reflection_note: payload.note, status: "submitted", submitted_at: new Date().toISOString() }, ...old]);
+      setSpeaking((old) => [{ id: `speak-${Date.now()}`, response_id: responseId, storage_path: "demo-session-only", duration_seconds: payload.audioSeconds, created_at: new Date().toISOString() }, ...old]);
+      return;
+    }
+    const supabase = getSupabase();
+    if (!supabase) throw new Error("Supabase is not configured");
+    const activityQuestions = questions.filter((q) => q.activity_id === selectedActivity.id);
+    const vocabText = activityQuestions.filter((q) => q.kind === "vocabulary").map((q) => payload.answers[q.id] || "").join(",");
+    const vocabWords = vocabText.split(/[,\n]/).map((word) => word.trim()).filter(Boolean).slice(0, 12);
+    const { data: response, error: responseError } = await supabase.from("responses").upsert({
+      student_id: profile.id,
+      activity_id: selectedActivity.id,
+      answers: payload.answers,
+      vocabulary: vocabWords,
+      confidence: payload.confidence,
+      difficulty: payload.difficulty,
+      reflection_note: payload.note || null,
+      status: "submitted",
+      submitted_at: new Date().toISOString(),
+    }, { onConflict: "student_id,activity_id" }).select("id").single();
+    if (responseError || !response) throw responseError || new Error("Could not save response");
+    const mime = (payload.audioBlob.type || "audio/webm").split(";")[0];
+    const ext = mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : mime.includes("mpeg") ? "mp3" : mime.includes("wav") ? "wav" : "webm";
+    const path = `${profile.id}/${response.id}-${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage.from("speaking-audio").upload(path, payload.audioBlob, { contentType: mime, upsert: true });
+    if (uploadError) throw uploadError;
+    const { error: speakingError } = await supabase.from("speaking_submissions").upsert({ response_id: response.id, storage_path: path, duration_seconds: Math.max(payload.audioSeconds, 1), mime_type: mime }, { onConflict: "response_id" });
+    if (speakingError) throw speakingError;
+    const contentId = selectedActivity.content_id;
+    if (vocabWords.length) await supabase.from("vocabulary").insert(vocabWords.map((word) => ({ student_id: profile.id, word, content_id: contentId })));
+    await loadData();
+  }
+
+  const selectedContent = selectedActivity ? contents.find((c) => c.id === selectedActivity.content_id) : null;
+  const selectedQuestions = selectedActivity ? questions.filter((q) => q.activity_id === selectedActivity.id).sort((a,b) => a.sort_order-b.sort_order) : [];
+
+  return (
+    <div className="student-app">
+      <header className="student-header">
+        <Brand compact />
+        <div className="student-header-right"><span className="demo-badge">{isDemo ? "Student Demo" : profile.cefr_level}</span><button className="avatar-btn" onClick={() => setView("profile")}>{profile.name.charAt(0)}</button></div>
+      </header>
+
+      <main className="student-main">
+        {loading ? <div className="loading-screen"><Loader2 className="spin" /><span>Loading your English journey…</span></div> : <>
+          {view === "home" && <div className="student-page">
+            <div className="page-intro"><div><div className="eyebrow">YOUR ENGLISH TODAY</div><h1>{greeting()}, {profile.name.split(" ")[0]}.</h1><p>One small loop today is enough to keep your English moving.</p></div><div className="streak-pill"><Flame size={17} /> {isDemo ? 5 : Math.min(completed, 7)} day streak</div></div>
+            <section className="student-focus-card">
+              <div className="focus-content"><div className="focus-label"><Sparkles size={14} /> READY WHEN YOU ARE</div><h2>{incomplete?.title || "Choose your next activity"}</h2><p>{incomplete?.speaking_prompt || "Explore the content library and turn your next input into spoken English."}</p><button className="btn btn-light" onClick={() => incomplete && setSelectedActivity(incomplete)}>{incomplete ? "Continue today’s activity" : "Explore content"} <ArrowRight size={17} /></button></div>
+              <div className="focus-loop"><div className="focus-ring"><Mic size={28} /></div><span>INPUT</span><i>→</i><span>OUTPUT</span></div>
+            </section>
+            <div className="stat-grid">{stats.map(({label,value,icon: Icon}) => <div className="stat-card" key={label}><div className="stat-icon"><Icon size={18} /></div><strong>{value}</strong><span>{label}</span></div>)}</div>
+            <div className="section-row"><div><h2>Pick up where you left off</h2><p>Short input. Real speaking.</p></div><button className="text-btn" onClick={() => setView("explore")}>See all <ArrowRight size={15} /></button></div>
+            <div className="content-scroll">{contents.slice(0,3).map((content) => {
+              const meta = typeMeta[content.content_type]; const Icon = meta.icon; const activity = activities.find((a) => a.content_id === content.id);
+              return <article className="content-card" key={content.id} onClick={() => activity && setSelectedActivity(activity)}><div className={classNames("content-card-art",meta.className)}><Icon size={22} /><span>{content.content_type}</span></div><div className="content-card-body"><div className="content-tags"><span>{content.cefr_level}</span><span>{content.duration_minutes} min</span></div><h3>{content.title}</h3><p>{content.topic}</p></div><button className="round-arrow"><ChevronRight size={17} /></button></article>;
+            })}</div>
+          </div>}
+
+          {view === "explore" && <div className="student-page">
+            <div className="page-intro"><div><div className="eyebrow">CONTENT LIBRARY</div><h1>Find something worth talking about.</h1><p>Choose by mood, level, or the way you want to consume English.</p></div></div>
+            <div className="explore-toolbar"><div className="search-box"><Search size={17} /><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Search topic or title" /></div><div className="filter-tabs">{["all","watch","listen","read"].map((item) => <button key={item} className={classNames(filter===item&&"selected")} onClick={()=>setFilter(item as typeof filter)}>{item[0].toUpperCase()+item.slice(1)}</button>)}</div></div>
+            <div className="library-grid">{filteredContents.map((content) => { const meta=typeMeta[content.content_type]; const Icon=meta.icon; const activity=activities.find((a)=>a.content_id===content.id); return <article className="library-card" key={content.id}><div className={classNames("library-art",meta.className)}><div className="library-icon"><Icon size={26}/></div><div className="library-level">{content.cefr_level}</div><span>{meta.label}</span></div><div className="library-body"><div className="content-tags"><span>{content.format}</span><span>{content.duration_minutes} min</span></div><h3>{content.title}</h3><p>{content.description}</p><div className="library-footer"><span>{content.topic}</span><button onClick={()=>activity&&setSelectedActivity(activity)}><ArrowRight size={16}/></button></div></div></article>})}</div>
+          </div>}
+
+          {view === "speak" && <div className="student-page"><div className="page-intro"><div><div className="eyebrow">SPEAK</div><h1>Your voice is the output.</h1><p>Choose a challenge. You already have something to say.</p></div></div><div className="speak-list">{activities.map((activity) => { const content=contents.find((c)=>c.id===activity.content_id); if(!content) return null; const done=responses.some((r)=>r.activity_id===activity.id&&r.status==="submitted"); return <article className="speak-row" key={activity.id}><div className={classNames("speak-row-icon",typeMeta[content.content_type].className)}><Mic size={20}/></div><div className="speak-row-main"><div className="content-tags"><span>{content.cefr_level}</span><span>{formatDuration(activity.min_duration_seconds)}–{formatDuration(activity.max_duration_seconds)}</span>{done&&<span className="done-tag">Done</span>}</div><h3>{activity.title}</h3><p>{activity.speaking_prompt}</p></div><button className="btn btn-soft" onClick={()=>setSelectedActivity(activity)}>{done?"Practice again":"Start"}<ArrowRight size={15}/></button></article>})}</div></div>}
+
+          {view === "progress" && <div className="student-page"><div className="page-intro"><div><div className="eyebrow">MY ENGLISH JOURNEY</div><h1>Progress you can actually see.</h1><p>Not perfection. More exposure, more expression, more confidence over time.</p></div></div><div className="journey-hero"><div><small>TOTAL ACTIVE ENGLISH</small><strong>{Math.max(Math.round(speakingSeconds/60), isDemo?12:0)} min</strong><span>of speaking practice</span></div><div className="journey-bars">{[38,51,70,94,112].map((n,i)=><div key={n}><span style={{height:`${25+i*14}%`}}/><small>W{i+1}</small></div>)}</div></div><div className="stat-grid">{stats.map(({label,value,icon:Icon})=><div className="stat-card" key={label}><div className="stat-icon"><Icon size={18}/></div><strong>{value}</strong><span>{label}</span></div>)}</div><div className="progress-columns"><section className="panel-card"><div className="panel-title"><div><h3>Vocabulary collected</h3><p>Words you met inside real context.</p></div><BookOpen size={20}/></div><div className="word-cloud">{vocabulary.slice(0,12).map((item,i)=><span key={`${item.word}-${i}`}>{item.word}</span>)}</div></section><section className="panel-card"><div className="panel-title"><div><h3>Latest teacher feedback</h3><p>Use one improvement at a time.</p></div><MessageSquareText size={20}/></div>{feedback.length?<div className="feedback-snippet"><strong>You did well</strong><p>{feedback[0].positive_feedback}</p><strong>Try this next</strong><p>{feedback[0].improvement_feedback}</p></div>:<div className="empty-mini"><Sparkles size={22}/><p>Your teacher feedback will appear here after a speaking submission is reviewed.</p></div>}</section></div></div>}
+
+          {view === "profile" && <div className="student-page"><div className="profile-card"><div className="big-avatar">{profile.name.charAt(0)}</div><div><div className="eyebrow">STUDENT PROFILE</div><h1>{profile.name}</h1><p>@{profile.username || "student"}</p></div><div className="profile-chips"><span>{profile.cefr_level}</span><span>{isDemo?"Class 10A":"English Loop"}</span></div><button className="bt
