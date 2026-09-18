@@ -1,5 +1,5 @@
 "use client";
-import { ExternalLink, FileText, Loader2, Youtube } from "lucide-react";
+import { ExternalLink, FileText, Loader2, Video } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import type { ContentItem } from "@/lib/demo-data";
@@ -37,7 +37,7 @@ export default function LearningMaterialPanel({content}:{content:ContentItem}){
     if(!videoId)return <div className="material-error">The YouTube link could not be previewed.</div>;
     return <div className="material-panel youtube-material">
       <div className="material-frame"><iframe src={`https://www.youtube.com/embed/${videoId}`} title={content.title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen/></div>
-      <div className="material-meta"><div><Youtube size={18}/><span><strong>YouTube input</strong><small>{content.source||"External video"}</small></span></div><a href={content.content_url||"#"} target="_blank" rel="noreferrer">Open on YouTube <ExternalLink size={14}/></a></div>
+      <div className="material-meta"><div><Video size={18}/><span><strong>YouTube input</strong><small>{content.source||"External video"}</small></span></div><a href={content.content_url||"#"} target="_blank" rel="noreferrer">Open on YouTube <ExternalLink size={14}/></a></div>
       {content.content_body&&<p className="material-note">{content.content_body}</p>}
     </div>;
   }
