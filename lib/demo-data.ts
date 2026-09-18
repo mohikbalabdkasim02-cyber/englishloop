@@ -37,6 +37,13 @@ export type QuestionItem = {
   sort_order: number;
 };
 
+const demoLegacyVideos = [
+  { id: "bad-habit", title: "Examination sign", topic: "A Simple Way to Break a Bad Habit", url: "https://youtu.be/-moW9jvvMr4", prompt: "Explain one way to break a bad habit in your own words." },
+  { id: "dreams", title: "Exercise", topic: "Dreams", url: "https://youtu.be/26PrgjTboVQ", prompt: "Tell us about a dream or goal and one step you can take toward it." },
+  { id: "history", title: "Exercise", topic: "History", url: "https://youtu.be/KXTbxC4ulF4", prompt: "Summarize one part of Singapore's history from the video." },
+  { id: "corruption", title: "Reflection", topic: "Corruption", url: "https://youtu.be/Fx4lLWcd5qg", prompt: "Explain the meaning of corruption using an example from the video." },
+];
+
 export const demoContents: ContentItem[] = [
   {
     id: "demo-foundation-greetings",
@@ -153,6 +160,21 @@ export const demoContents: ContentItem[] = [
     material_type: "youtube",
     content_url: "https://youtu.be/e4K9NH7-6I4",
   },
+  ...demoLegacyVideos.map((video) => ({
+    id: `demo-video-${video.id}`,
+    title: video.title,
+    description: `${video.topic} · A2`,
+    content_type: "watch" as const,
+    format: "YouTube",
+    cefr_level: "A2" as const,
+    topic: video.topic,
+    duration_minutes: 4,
+    source: "YouTube",
+    content_body: "",
+    vocabulary_focus: [],
+    material_type: "youtube" as const,
+    content_url: video.url,
+  })),
 ];
 
 export const demoActivities: ActivityItem[] = [
@@ -221,6 +243,16 @@ export const demoActivities: ActivityItem[] = [
     max_duration_seconds: 90,
     is_published: true,
   },
+  ...demoLegacyVideos.map((video) => ({
+    id: `demo-video-${video.id}-activity`,
+    content_id: `demo-video-${video.id}`,
+    title: video.title,
+    instructions: "Watch the material, check your understanding, then speak in your own words.",
+    speaking_prompt: video.prompt,
+    min_duration_seconds: 45,
+    max_duration_seconds: 90,
+    is_published: true,
+  })),
   {
     id: "demo-a1-routine-activity",
     content_id: "demo-a1-routine",
@@ -277,6 +309,11 @@ export const demoQuestions: QuestionItem[] = [
   { id: "demo-yusss-q1", activity_id: "demo-yusss-activity", kind: "short_answer", prompt: "What is the main idea?", sort_order: 1 },
   { id: "demo-yusss-q2", activity_id: "demo-yusss-activity", kind: "vocabulary", prompt: "Write three useful words from this content.", sort_order: 2 },
   { id: "demo-yusss-q3", activity_id: "demo-yusss-activity", kind: "reflection", prompt: "What did you find interesting?", sort_order: 3 },
+  ...demoLegacyVideos.flatMap((video) => [
+    { id: `demo-video-${video.id}-q1`, activity_id: `demo-video-${video.id}-activity`, kind: "short_answer" as const, prompt: "What is the main idea of this video?", sort_order: 1 },
+    { id: `demo-video-${video.id}-q2`, activity_id: `demo-video-${video.id}-activity`, kind: "vocabulary" as const, prompt: "Write three useful words from the video.", sort_order: 2 },
+    { id: `demo-video-${video.id}-q3`, activity_id: `demo-video-${video.id}-activity`, kind: "reflection" as const, prompt: "How could you use what you learned?", sort_order: 3 },
+  ]),
 ];
 
 export const demoStudents: Array<{ id:string; name:string; username:string; cefr_level:string; class_name:string; completed:number; speakingMinutes:number; vocabulary:number; streak:number }> = [];

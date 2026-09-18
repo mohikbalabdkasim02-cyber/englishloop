@@ -44,6 +44,7 @@ import StudentCreateModal from "@/components/student-create-modal";
 import { PinChangeCard, StudentPinResetModal } from "@/components/pin-security";
 import StudentTaskStrip from "@/components/student-task-strip";
 import LearningMaterialPanel from "@/components/learning-material-panel";
+import YouTubeThumbnail from "@/components/youtube-thumbnail";
 import { SPEAKING_RUBRIC, RUBRIC_NAME, rubricOverall, rubricPerformanceLabel } from "@/lib/speaking-rubric";
 import {
   demoActivities,
@@ -129,6 +130,16 @@ const typeMeta = {
   listen: { label: "Listen", icon: Headphones, className: "type-listen" },
   read: { label: "Read", icon: BookOpen, className: "type-read" },
 };
+
+function MaterialResourceCard({ content, activity, onOpen }: { content: ContentItem; activity: ActivityItem; onOpen: (activity: ActivityItem) => void }) {
+  const isVideo = content.material_type === "youtube";
+  return <article className="library-card resource-card">
+    <button type="button" className="resource-card-link" onClick={() => onOpen(activity)} aria-label={`Open ${isVideo ? "YouTube video" : "PDF"}: ${content.title}, ${content.topic}, ${content.cefr_level}`}>
+      {isVideo ? <YouTubeThumbnail url={content.content_url} title={content.title} level={content.cefr_level} /> : <div className="library-art type-read"><div className="library-icon"><BookOpen size={25} /></div><span className="library-level">{content.cefr_level}</span></div>}
+      <div className="library-body"><div className="content-tags"><span>{content.cefr_level}</span><span>{isVideo ? "YouTube" : "PDF"}</span></div><h3>{content.title}</h3><p>{content.topic || content.description}</p><div className="library-footer"><span>{content.duration_minutes || 0} min · {content.cefr_level}</span><span className="resource-open-label">Open material <ArrowRight size={15} /></span></div></div>
+    </button>
+  </article>;
+}
 
 function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
@@ -548,6 +559,10 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
     if (aAssigned !== bAssigned) return aAssigned - bAssigned;
     return (a.pathway_order ?? 999) - (b.pathway_order ?? 999);
     });
+  const resourceMaterials = contents.filter((content) =>
+    (content.material_type === "youtube" || content.material_type === "pdf")
+    && activities.some((activity) => activity.content_id === content.id)
+  );
   const incomplete = taskActivities.find((a) => !responses.some((r) => r.activity_id === a.id && r.status === "submitted"))
     || taskActivities[0];
   const speakingByResponse = useMemo(() => Object.fromEntries(speaking.map((item) => [item.response_id, item])), [speaking]);
@@ -633,6 +648,13 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
             <div className="stat-grid">{stats.map(({label,value,icon: Icon}) => <div className="stat-card" key={label}><div className="stat-icon"><Icon size={18} /></div><strong>{value}</strong><span>{label}</span></div>)}</div>
             <StudentTaskStrip assignments={assignments} activities={taskActivities} contents={contents} responses={responses} onOpen={setSelectedActivity} />
             <button className="text-btn" onClick={() => setView("tasks")}>See the full pathway <ArrowRight size={15} /></button>
+            {resourceMaterials.some((content) => content.material_type === "youtube") && <section>
+              <div className="section-row"><div><h2>Watch & learn</h2><p>Video YouTube sebelumnya tetap tersedia untuk latihan tambahan.</p></div><button className="text-btn" onClick={() => setView("tasks")}>See all videos <ArrowRight size={15} /></button></div>
+              <div className="library-grid">{resourceMaterials.filter((content) => content.material_type === "youtube").slice(0, 3).map((content) => {
+                const activity = activities.find((item) => item.content_id === content.id)!;
+                return <MaterialResourceCard key={content.id} content={content} activity={activity} onOpen={setSelectedActivity} />;
+              })}</div>
+            </section>}
           </div>}
 
           {view === "tasks" && <div className="student-page">
@@ -641,7 +663,7 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
               <div><small>CURRENT LEARNING PATH</small><strong>{profile.cefr_level === "Pre-A1" ? "Foundations" : profile.cefr_level}</strong><span>{profile.cefr_level === "Pre-A1" ? "Alphabet, numbers, greetings, basic vocabulary, and core grammar before A1." : "Tasks matched to your current learning level."}</span></div>
               <div className="review-journey-summary"><div><strong>{completed}</strong><span>complete</span></div><div><strong>{Math.max(taskActivities.length-completed,0)}</strong><span>to go</span></div></div>
             </div>
-            <div className="section-row"><div><h2>Day-by-day tasks</h2><p>Open the material first, understand it, then speak and submit in one flow.</p></div></div>
+            <div className="section-row"><div><h2>Day-by-day tasks</h2><p>Open the material first, understand it, then speak and submit in one flow.</p></div>{resourceMaterials.length > 0 && <button className="text-btn" onClick={() => document.getElementById("more-materials")?.scrollIntoView({ behavior: "smooth" })}>Video & PDF ({resourceMaterials.length}) <ArrowRight size={15} /></button>}</div>
             <div className="speak-list">{taskActivities.map((activity, index) => {
               const content=contents.find((c)=>c.id===activity.content_id); if(!content) return null;
               const done=responses.some((r)=>r.activity_id===activity.id&&r.status==="submitted");
@@ -660,6 +682,13 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
               </article>;
             })}</div>
             {!taskActivities.length&&<div className="student-review-empty"><ListChecks size={26}/><h3>No tasks yet</h3><p>Your teacher&apos;s learning tasks will appear here.</p></div>}
+            {resourceMaterials.length > 0 && <section aria-labelledby="resource-heading">
+              <div className="section-row" id="more-materials"><div><h2 id="resource-heading">Video YouTube & PDF</h2><p>Materi yang sudah ada tetap bisa dibuka. Levelnya terlihat agar kamu bisa memilih latihan yang sesuai.</p></div></div>
+              <div className="library-grid">{resourceMaterials.map((content) => {
+                const activity = activities.find((item) => item.content_id === content.id)!;
+                return <MaterialResourceCard key={content.id} content={content} activity={activity} onOpen={setSelectedActivity} />;
+              })}</div>
+            </section>}
           </div>}
 
           {view === "progress" && <div className="student-page">

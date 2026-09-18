@@ -202,6 +202,12 @@ a { color: inherit; }
 .library-body > p { min-height: 48px; }
 .library-footer { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 13px; display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 10px; }
 .library-footer button { border: 0; background: var(--ink); color: white; width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; }
+.resource-card-link { display: block; width: 100%; height: 100%; border: 0; padding: 0; background: white; color: inherit; text-align: left; cursor: pointer; }
+.resource-card-link:focus-visible { outline: 3px solid var(--primary); outline-offset: -3px; }
+.resource-card .library-body { display: flex; flex-direction: column; min-height: 155px; }
+.resource-card .library-body > p { flex: 1; min-height: 0; }
+.resource-open-label { display: inline-flex; align-items: center; gap: 5px; color: var(--primary); font-weight: 800; }
+#more-materials { scroll-margin-top: 96px; }
 .speak-list { display: grid; gap: 11px; }
 .speak-row { border: 1px solid var(--line); background: white; border-radius: 20px; padding: 16px; display: grid; grid-template-columns: 52px 1fr auto; gap: 15px; align-items: center; }
 .speak-row-icon { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; }
