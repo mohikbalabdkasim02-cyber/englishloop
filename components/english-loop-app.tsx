@@ -151,10 +151,12 @@ function greeting() {
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <div className={classNames("brand", compact && "brand-compact")}>
-      <div className="brand-mark" aria-hidden="true">
-        <span />
-        <span />
-      </div>
+      <img
+        src="/brand/english-loop-logo.svg"
+        alt="English Loop"
+        className="brand-image"
+        draggable={false}
+      />
       <div>
         <strong>English Loop</strong>
         {!compact && <small>Input → Output → Growth</small>}

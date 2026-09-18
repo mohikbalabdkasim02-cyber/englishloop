@@ -32,6 +32,13 @@ export const metadata: Metadata = {
         type: "image/png",
         alt: "English Loop — Input to Output English Learning",
       },
+      {
+        url: "https://englishloop-beta.vercel.app/brand/english-loop-logo.svg",
+        width: 512,
+        height: 512,
+        type: "image/svg+xml",
+        alt: "English Loop logo",
+      },
     ],
   },
   twitter: {
@@ -72,6 +79,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
+      <head>
+        <link rel="image_src" href="https://englishloop-beta.vercel.app/brand/english-loop-logo.svg" />
+        <meta itemProp="image" content="https://englishloop-beta.vercel.app/brand/english-loop-logo.svg" />
+      </head>
       <body>
         {children}
         <PwaRegister />
