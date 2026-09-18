@@ -63,7 +63,7 @@ Deno.serve(async (req: Request) => {
 
   if (name.length < 2) return json({ error: "Student name is required." }, 400);
   if (!/^[a-z0-9._-]{3,32}$/.test(username)) return json({ error: "Invalid username." }, 400);
-  if (password.length < 8) return json({ error: "Password must be at least 8 characters." }, 400);
+  if (!/^\\d{6}$/.test(password)) return json({ error: "PIN must contain exactly 6 digits." }, 400);
   if (!["A1", "A2", "B1", "B2"].includes(level)) return json({ error: "Invalid CEFR level." }, 400);
 
   if (classId) {
