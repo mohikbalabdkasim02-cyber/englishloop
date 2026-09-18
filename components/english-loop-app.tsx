@@ -868,7 +868,7 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   }
 
   const navItems:[TeacherView,string,typeof Home][]=[
-    ["dashboard","Dashboard",Home],["students","Students",Users],["content","Content",Library],["activities","Activities",ListChecks],["submissions","Submissions",Mic],["progress","Progress",BarChart3],["settings","Settings",Settings]
+    ["dashboard","Dashboard",Home],["students","Students",Users],["content","Content",Library],["activities","Activities",ListChecks],["submissions","Submissions",Mic],["progress","Progress",BarChart3],["settings","Admin Settings",Settings]
   ];
 
   return <div className="teacher-app">
