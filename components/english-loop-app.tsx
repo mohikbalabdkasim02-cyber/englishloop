@@ -158,7 +158,7 @@ function Landing({ onDemo, onLogin, onSetup }: { onDemo: (role: "student" | "tea
         <Brand />
         <div className="landing-nav-actions">
           <button className="btn btn-ghost" onClick={onLogin}>Sign in</button>
-          <button className="btn btn-dark" onClick={onSetup}>Set up real trial <ArrowRight size={16} /></button>
+          <button className="btn btn-dark" onClick={onSetup}>Create first admin <ArrowRight size={16} /></button>
         </div>
       </header>
 
@@ -168,7 +168,7 @@ function Landing({ onDemo, onLogin, onSetup }: { onDemo: (role: "student" | "tea
           <h1>Learn from English.<br /><span>Speak with English.</span></h1>
           <p>English Loop turns authentic input into short, repeatable speaking practice — so students do more than understand English. They use it.</p>
           <div className="hero-actions">
-            <button className="btn btn-primary btn-lg" onClick={onSetup}>Set up real trial <ArrowRight size={18} /></button>
+            <button className="btn btn-primary btn-lg" onClick={onSetup}>Create first admin <ArrowRight size={18} /></button>
             <button className="btn btn-soft btn-lg" onClick={() => onDemo("student")}>Try Student Demo</button>
             <button className="btn btn-ghost btn-lg" onClick={() => onDemo("teacher")}>Teacher Demo</button>
           </div>
@@ -280,14 +280,13 @@ function LoginModal({ onClose, onSuccess, onSetup }: { onClose: () => void; onSu
           {error && <div className="form-error">{error}</div>}
           <button className="btn btn-primary btn-lg full" disabled={busy}>{busy ? <Loader2 className="spin" size={17} /> : <ArrowRight size={17} />} {busy ? "Signing in…" : "Sign in"}</button>
         </form>
-        <div className="demo-hint setup-login-hint"><Sparkles size={16} /><span>First real use?</span><button type="button" onClick={onSetup}>Set up the first admin account</button></div>
+        <div className="demo-hint setup-login-hint"><Sparkles size={16} /><span>First real use?</span><button type="button" onClick={onSetup}>Create the first admin — no setup key</button></div>
       </div>
     </div>
   );
 }
 
 function SetupAdminModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (profile: Profile) => void }) {
-  const [setupKey, setSetupKey] = useState("");
   const [name, setName] = useState("Yusril Maulana");
   const [username, setUsername] = useState("yusril");
   const [pin, setPin] = useState("");
@@ -298,49 +297,86 @@ function SetupAdminModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setError("");
-    if(!/^\d{6}$/.test(pin)){setError("PIN must contain exactly 6 digits.");return;}
-    if(pin!==confirmPin){setError("PIN confirmation does not match.");return;}
 
-    const supabase=getSupabase();
-    if(!supabase){setError("Supabase is not configured.");return;}
-
-    setBusy(true);
-    const {data,error:invokeError}=await supabase.functions.invoke("bootstrap-trial",{
-      body:{token:setupKey.trim(),name:name.trim(),username:username.trim().toLowerCase(),pin}
-    });
-
-    if(invokeError||!data?.ok){
-      let message=data?.error||invokeError?.message||"Could not set up the admin account.";
-      const context=(invokeError as {context?:Response}|null)?.context;
-      if(context){
-        try{
-          const payload=await context.clone().json();
-          if(payload?.error)message=payload.error;
-        }catch{}
-      }
-      setBusy(false);
-      setError(message);
+    const cleanUsername=username.trim().toLowerCase();
+    if(cleanUsername!=="yusril"){
+      setError("The first admin username must be yusril.");
+      return;
+    }
+    if(!/^\d{6}$/.test(pin)){
+      setError("PIN must contain exactly 6 digits.");
+      return;
+    }
+    if(pin!==confirmPin){
+      setError("PIN confirmation does not match.");
       return;
     }
 
-    const email=`${username.trim().toLowerCase()}@englishloop.local`;
-    const {data:loginData,error:loginError}=await supabase.auth.signInWithPassword({email,password:pin});
-    if(loginError||!loginData.user){
+    const supabase=getSupabase();
+    if(!supabase){
+      setError("Supabase is not configured.");
+      return;
+    }
+
+    setBusy(true);
+    const email=`${cleanUsername}@englishloop.local`;
+
+    const {data:signUpData,error:signUpError}=await supabase.auth.signUp({
+      email,
+      password:pin,
+      options:{
+        data:{
+          name:name.trim()||"Yusril Maulana",
+          username:cleanUsername,
+          cefr_level:"A1"
+        }
+      }
+    });
+
+    if(signUpError){
       setBusy(false);
-      setError("Admin was created, but automatic sign-in failed. Close this window and sign in normally.");
+      const message=signUpError.message.toLowerCase();
+      if(message.includes("already")||message.includes("registered")){
+        setError("Admin account already exists. Close this window and use Sign in.");
+      }else{
+        setError(signUpError.message);
+      }
+      return;
+    }
+
+    let user=signUpData.user;
+    if(!signUpData.session){
+      await new Promise((resolve)=>setTimeout(resolve,450));
+      const {data:loginData,error:loginError}=await supabase.auth.signInWithPassword({email,password:pin});
+      if(loginError||!loginData.user){
+        setBusy(false);
+        setError("Admin account was created. Close this window, then sign in with username yusril and your PIN.");
+        return;
+      }
+      user=loginData.user;
+    }
+
+    if(!user){
+      setBusy(false);
+      setError("Could not create the admin account.");
       return;
     }
 
     const {data:profileData,error:profileError}=await supabase.from("profiles")
       .select("id,name,username,role,class_id,cefr_level")
-      .eq("id",loginData.user.id)
+      .eq("id",user.id)
       .single();
 
     setBusy(false);
     if(profileError||!profileData){
-      setError("Admin account exists, but the profile could not be loaded.");
+      setError("Admin account exists, but the English Loop profile could not be loaded.");
       return;
     }
+    if(profileData.role!=="admin"&&profileData.role!=="teacher"){
+      setError("This project already has an admin. Sign in with the existing admin account.");
+      return;
+    }
+
     onSuccess(profileData as Profile);
   }
 
@@ -350,24 +386,23 @@ function SetupAdminModal({ onClose, onSuccess }: { onClose: () => void; onSucces
         <button className="icon-btn modal-close" onClick={onClose}><X size={18}/></button>
         <Brand />
         <div className="setup-admin-copy">
-          <div className="eyebrow"><Settings size={14}/> ONE-TIME REAL SETUP</div>
-          <h2>Create the first English Loop admin.</h2>
-          <p>This runs only once. After the first admin is created, the bootstrap route locks automatically. Students are then created from Admin Settings.</p>
+          <div className="eyebrow"><Settings size={14}/> FIRST REAL ADMIN</div>
+          <h2>Create Yusril&apos;s admin account.</h2>
+          <p>No Setup Key is required. English Loop only promotes <strong>yusril</strong> when no admin exists yet. After that, all student accounts are created from Admin Settings.</p>
         </div>
 
         <form className="stack-form" onSubmit={submit}>
-          <label><span>Setup Key</span><input type="password" value={setupKey} onChange={(e)=>setSetupKey(e.target.value)} placeholder="Paste the one-time setup key" required autoFocus/></label>
-          <label><span>Admin name</span><input value={name} onChange={(e)=>setName(e.target.value)} required/></label>
+          <label><span>Admin name</span><input value={name} onChange={(e)=>setName(e.target.value)} required autoFocus/></label>
           <label><span>Admin username</span><input value={username} onChange={(e)=>setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g,""))} minLength={3} maxLength={32} required/></label>
           <div className="form-grid two">
-            <label><span>Choose 6-digit PIN</span><input type="password" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} value={pin} onChange={(e)=>setPin(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="••••••" required/></label>
-            <label><span>Confirm PIN</span><input type="password" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} value={confirmPin} onChange={(e)=>setConfirmPin(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="••••••" required/></label>
+            <label><span>Choose 6-digit PIN</span><input type="password" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} value={pin} onChange={(e)=>setPin(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="6-digit PIN" required/></label>
+            <label><span>Confirm PIN</span><input type="password" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} value={confirmPin} onChange={(e)=>setConfirmPin(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="Repeat PIN" required/></label>
           </div>
           {error&&<div className="form-error">{error}</div>}
-          <button className="btn btn-primary btn-lg full" disabled={busy}>{busy?<Loader2 className="spin" size={17}/>:<ArrowRight size={17}/>} {busy?"Creating real workspace…":"Create admin & enter English Loop"}</button>
+          <button className="btn btn-primary btn-lg full" disabled={busy}>{busy?<Loader2 className="spin" size={17}/>:<ArrowRight size={17}/>} {busy?"Creating admin…":"Create admin & enter English Loop"}</button>
         </form>
 
-        <div className="setup-security-note"><CheckCircle2 size={16}/><span>No sample students are created. After login, use <strong>Admin Settings → Students & PIN Access</strong> to add your own trial students.</span></div>
+        <div className="setup-security-note"><CheckCircle2 size={16}/><span>After this first admin exists, this flow can no longer create another admin. Add students from <strong>Admin Settings → Students & PIN Access</strong>.</span></div>
       </div>
     </div>
   );
