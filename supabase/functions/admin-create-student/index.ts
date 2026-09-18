@@ -31,8 +31,8 @@ Deno.serve(async(req:Request)=>{
    return json({ok:true,students_deleted:studentProfiles?.length||0,audio_deleted:audioObjects?.length||0});
  }
  if(action!=="create_student")return json({error:"Unsupported action."},400);
- const name=String(body.name??"").trim();const username=String(body.username??"").trim().toLowerCase();const pin=String(body.password??body.pin??"");const classId=body.class_id?String(body.class_id):null;const level=String(body.cefr_level??"A1").toUpperCase();
- if(name.length<2)return json({error:"Student name is required."},400);if(!/^[a-z0-9._-]{3,32}$/.test(username))return json({error:"Invalid username."},400);if(!/^\d{6}$/.test(pin))return json({error:"PIN must contain exactly 6 digits."},400);if(!["A1","A2","B1","B2"].includes(level))return json({error:"Invalid CEFR level."},400);
+ const name=String(body.name??"").trim();const username=String(body.username??"").trim().toLowerCase();const pin=String(body.password??body.pin??"");const classId=body.class_id?String(body.class_id):null;const level=String(body.cefr_level??"Pre-A1").trim();
+ if(name.length<2)return json({error:"Student name is required."},400);if(!/^[a-z0-9._-]{3,32}$/.test(username))return json({error:"Invalid username."},400);if(!/^\d{6}$/.test(pin))return json({error:"PIN must contain exactly 6 digits."},400);if(!["Pre-A1","A1","A2","B1","B2"].includes(level))return json({error:"Invalid CEFR level."},400);
  if(classId){const {data:classRow}=await userClient.from("classes").select("id").eq("id",classId).maybeSingle();if(!classRow)return json({error:"Class not found."},400)}
  const {data:created,error:createError}=await admin.auth.admin.createUser({email:`${username}@englishloop.local`,password:pin,email_confirm:true,user_metadata:{name,username,cefr_level:level},app_metadata:{role:"student"}});
  if(createError||!created.user){const message=createError?.message?.toLowerCase().includes("already")?"That username is already in use.":createError?.message??"Could not create student.";return json({error:message},400)}

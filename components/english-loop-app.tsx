@@ -67,7 +67,7 @@ type Profile = {
 };
 
 type AppMode = "landing" | "student" | "teacher";
-type StudentView = "home" | "explore" | "speak" | "progress" | "profile";
+type StudentView = "home" | "tasks" | "progress" | "profile";
 type TeacherView = "dashboard" | "students" | "content" | "activities" | "submissions" | "progress" | "settings";
 
 type ResponseRow = {
@@ -186,7 +186,7 @@ function Landing({ onDemo, onLogin }: { onDemo: (role: "student" | "teacher") =>
             <button className="btn btn-ghost btn-lg" onClick={() => onDemo("teacher")}>Preview Teacher</button>
           </div>
           <div className="hero-proof">
-            <div><strong>01</strong><span>Explore</span></div>
+            <div><strong>01</strong><span>Task</span></div>
             <i />
             <div><strong>02</strong><span>Understand</span></div>
             <i />
@@ -229,7 +229,7 @@ function Landing({ onDemo, onLogin }: { onDemo: (role: "student" | "teacher") =>
         <h2>Input gives students something to say.<br />Output trains them to say it.</h2>
         <div className="loop-grid">
           {[
-            ["01", "Explore", "Choose level-appropriate content that feels worth consuming.", Compass],
+            ["01", "Task", "Open one structured task that combines material, understanding, and output.", ListChecks],
             ["02", "Understand", "Capture the main idea, useful words, and personal response.", BookOpen],
             ["03", "Speak", "Turn comprehension into a 1–2 minute speaking challenge.", Mic],
             ["04", "Feedback", "Receive focused, constructive teacher feedback.", MessageSquareText],
@@ -410,7 +410,7 @@ function ActivityExperience({
   const [busy, setBusy] = useState(false);
   const meta = typeMeta[content.content_type];
   const Icon = meta.icon;
-  const steps = ["Consume", "Understand", "Speak", "Reflect"];
+  const steps = ["Learn", "Understand", "Speak", "Reflect"];
 
   async function finish() {
     if (!audioBlob) return;
@@ -484,7 +484,7 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   const [responses, setResponses] = useState<ResponseRow[]>([]);
   const [speaking, setSpeaking] = useState<SpeakingRow[]>([]);
   const [feedback, setFeedback] = useState<FeedbackRow[]>([]);
-  const [assignments, setAssignments] = useState<AssignmentRow[]>(isDemo ? demoActivities.slice(0, 2).map((activity, index) => ({
+  const [assignments, setAssignments] = useState<AssignmentRow[]>(isDemo ? demoActivities.slice(0, 3).map((activity, index) => ({
     id: `demo-assignment-${index + 1}`,
     activity_id: activity.id,
     class_id: "c1",
@@ -494,8 +494,6 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   const [vocabulary, setVocabulary] = useState<Array<{ id?: string; word: string; meaning?: string | null }>>([]);
   const [selectedActivity, setSelectedActivity] = useState<ActivityItem | null>(null);
   const [selectedReview, setSelectedReview] = useState<StudentReviewItem | null>(null);
-  const [filter, setFilter] = useState<"all" | "watch" | "listen" | "read">("all");
-  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(!isDemo);
 
   const loadData = useCallback(async () => {
@@ -536,12 +534,20 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   ];
   const assignedActivityIds = useMemo(() => new Set(assignments.map((item) => item.activity_id)), [assignments]);
   const assignedActivities = activities.filter((activity) => assignedActivityIds.has(activity.id));
-  const practiceActivities = activities.slice().sort((a, b) => Number(assignedActivityIds.has(b.id)) - Number(assignedActivityIds.has(a.id)));
+  const taskActivities = activities
+    .filter((activity) => {
+      const content = contents.find((item) => item.id === activity.content_id);
+      return assignedActivityIds.has(activity.id) || content?.cefr_level === profile.cefr_level;
+    })
+    .sort((a, b) => {
+    const aAssigned = assignedActivityIds.has(a.id) ? 0 : 1;
+    const bAssigned = assignedActivityIds.has(b.id) ? 0 : 1;
+    if (aAssigned !== bAssigned) return aAssigned - bAssigned;
+    return (a.pathway_order ?? 999) - (b.pathway_order ?? 999);
+    });
   const incomplete = assignedActivities.find((a) => !responses.some((r) => r.activity_id === a.id && r.status === "submitted"))
     || activities.find((a) => !responses.some((r) => r.activity_id === a.id && r.status === "submitted"))
     || activities[0];
-  const filteredContents = contents.filter((item) => (filter === "all" || item.content_type === filter) && `${item.title} ${item.topic}`.toLowerCase().includes(search.toLowerCase()));
-
   const speakingByResponse = useMemo(() => Object.fromEntries(speaking.map((item) => [item.response_id, item])), [speaking]);
   const feedbackBySpeaking = useMemo(() => Object.fromEntries(feedback.map((item) => [item.speaking_id, item])), [feedback]);
   const activityById = useMemo(() => Object.fromEntries(activities.map((item) => [item.id, item])), [activities]);
@@ -619,12 +625,12 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
           {view === "home" && <div className="student-page">
             <div className="page-intro"><div><div className="eyebrow">YOUR ENGLISH TODAY</div><h1>{greeting()}, {profile.name.split(" ")[0]}.</h1><p>One small loop today is enough to keep your English moving.</p></div><div className="streak-pill"><Flame size={17} /> {isDemo ? 5 : Math.min(completed, 7)} day streak</div></div>
             <section className="student-focus-card">
-              <div className="focus-content"><div className="focus-label"><Sparkles size={14} /> READY WHEN YOU ARE</div><h2>{incomplete?.title || "Choose your next activity"}</h2><p>{incomplete?.speaking_prompt || "Explore the content library and turn your next input into spoken English."}</p><button className="btn btn-light" onClick={() => incomplete && setSelectedActivity(incomplete)}>{incomplete ? "Continue today’s activity" : "Explore content"} <ArrowRight size={17} /></button></div>
+              <div className="focus-content"><div className="focus-label"><Sparkles size={14} /> READY WHEN YOU ARE</div><h2>{incomplete?.title || "Choose your next activity"}</h2><p>{incomplete?.speaking_prompt || "Open your task pathway and turn the material into real English practice."}</p><button className="btn btn-light" onClick={() => incomplete && setSelectedActivity(incomplete)}>{incomplete ? "Continue today’s activity" : "Open tasks"} <ArrowRight size={17} /></button></div>
               <div className="focus-loop"><div className="focus-ring"><Mic size={28} /></div><span>INPUT</span><i>→</i><span>OUTPUT</span></div>
             </section>
             <div className="stat-grid">{stats.map(({label,value,icon: Icon}) => <div className="stat-card" key={label}><div className="stat-icon"><Icon size={18} /></div><strong>{value}</strong><span>{label}</span></div>)}</div>
             <StudentTaskStrip assignments={assignments} activities={activities} contents={contents} responses={responses} onOpen={(activity:any)=>setSelectedActivity(activity)} />
-            <div className="section-row"><div><h2>Pick up where you left off</h2><p>Short input. Real speaking.</p></div><button className="text-btn" onClick={() => setView("explore")}>See all <ArrowRight size={15} /></button></div>
+            <div className="section-row"><div><h2>Pick up where you left off</h2><p>Short input. Real speaking.</p></div><button className="text-btn" onClick={() => setView("tasks")}>See all <ArrowRight size={15} /></button></div>
             <div className="content-scroll">{contents.slice(0,3).map((content) => {
               const meta = typeMeta[content.content_type]; const Icon = meta.icon; const activity = activities.find((a) => a.content_id === content.id);
               const isYouTube=(content.material_type||content.format?.toLowerCase())==="youtube";
@@ -644,32 +650,32 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
             })}</div>
           </div>}
 
-          {view === "explore" && <div className="student-page">
-            <div className="page-intro"><div><div className="eyebrow">CONTENT LIBRARY</div><h1>Find something worth talking about.</h1><p>Choose by mood, level, or the way you want to consume English.</p></div></div>
-            <div className="explore-toolbar"><div className="search-box"><Search size={17} /><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Search topic or title" /></div><div className="filter-tabs">{["all","watch","listen","read"].map((item) => <button key={item} className={classNames(filter===item&&"selected")} onClick={()=>setFilter(item as typeof filter)}>{item[0].toUpperCase()+item.slice(1)}</button>)}</div></div>
-            <div className="library-grid">{filteredContents.map((content) => {
-              const meta=typeMeta[content.content_type];
-              const Icon=meta.icon;
-              const activity=activities.find((a)=>a.content_id===content.id);
-              const isYouTube=(content.material_type||content.format?.toLowerCase())==="youtube";
-              const open=()=>activity&&setSelectedActivity(activity);
-              return <article
-                className={classNames("library-card",isYouTube&&"youtube-library-card")}
-                key={content.id}
-                role="button"
-                tabIndex={0}
-                onClick={open}
-                onKeyDown={(e)=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();open()}}}
-              >
-                {isYouTube
-                  ? <YouTubeThumbnail url={content.content_url} title={content.title} level={content.cefr_level} />
-                  : <div className={classNames("library-art",meta.className)}><div className="library-icon"><Icon size={26}/></div><div className="library-level">{content.cefr_level}</div><span>{meta.label}</span></div>}
-                <div className="library-body"><div className="content-tags"><span>{content.format}</span><span>{content.duration_minutes} min</span></div><h3>{content.title}</h3><p>{content.description||`${content.topic} · ${content.cefr_level}`}</p><div className="library-footer"><span>{content.topic}</span><button onClick={(e)=>{e.stopPropagation();open()}} aria-label={`Open ${content.title}`}><ArrowRight size={16}/></button></div></div>
-              </article>
-            })}{!filteredContents.length&&<div className="library-empty"><Video size={24}/><h3>No materials yet</h3><p>Your teacher&apos;s published materials will appear here.</p></div>}</div>
+          {view === "tasks" && <div className="student-page">
+            <div className="page-intro"><div><div className="eyebrow">MY TASK PATHWAY</div><h1>Learn it. Use it. Complete it.</h1><p>Each task keeps the material and practice together, so you always know what to do next.</p></div><div className="streak-pill"><GraduationCap size={17} /> {profile.cefr_level} pathway</div></div>
+            <div className="journey-hero">
+              <div><small>CURRENT LEARNING PATH</small><strong>{profile.cefr_level === "Pre-A1" ? "Foundations" : profile.cefr_level}</strong><span>{profile.cefr_level === "Pre-A1" ? "Alphabet, numbers, greetings, basic vocabulary, and core grammar before A1." : "Tasks matched to your current learning level."}</span></div>
+              <div className="review-journey-summary"><div><strong>{completed}</strong><span>complete</span></div><div><strong>{Math.max(taskActivities.length-completed,0)}</strong><span>to go</span></div></div>
+            </div>
+            <div className="section-row"><div><h2>Day-by-day tasks</h2><p>Open the material first, understand it, then speak and submit in one flow.</p></div></div>
+            <div className="speak-list">{taskActivities.map((activity, index) => {
+              const content=contents.find((c)=>c.id===activity.content_id); if(!content) return null;
+              const done=responses.some((r)=>r.activity_id===activity.id&&r.status==="submitted");
+              const assigned=assignedActivityIds.has(activity.id);
+              const meta=typeMeta[content.content_type]; const InputIcon=meta.icon;
+              const day=activity.pathway_order ?? index+1;
+              return <article className="speak-row" key={activity.id}>
+                <div className={classNames("speak-row-icon",meta.className)}><span style={{fontWeight:800,fontSize:12}}>D{day}</span></div>
+                <div className="speak-row-main">
+                  <div className="content-tags"><span>{content.cefr_level}</span><span><InputIcon size={12}/> {meta.label}</span><span>{content.duration_minutes} min</span>{assigned&&<span className="assigned-tag">Assigned</span>}{done&&<span className="done-tag">Done</span>}</div>
+                  <h3>{activity.title}</h3>
+                  <p>{content.description || content.topic}</p>
+                  <div className="content-tags"><span>1 Material</span><span>2 Understand</span><span>3 Speak</span><span>4 Submit</span></div>
+                </div>
+                <button className="btn btn-soft" onClick={()=>setSelectedActivity(activity)}>{done?"Practice again":"Start task"}<ArrowRight size={15}/></button>
+              </article>;
+            })}</div>
+            {!taskActivities.length&&<div className="student-review-empty"><ListChecks size={26}/><h3>No tasks yet</h3><p>Your teacher&apos;s learning tasks will appear here.</p></div>}
           </div>}
-
-          {view === "speak" && <div className="student-page"><div className="page-intro"><div><div className="eyebrow">SPEAK</div><h1>Your voice is the output.</h1><p>Choose a challenge. You already have something to say.</p></div></div><div className="speak-list">{practiceActivities.map((activity) => { const content=contents.find((c)=>c.id===activity.content_id); if(!content) return null; const done=responses.some((r)=>r.activity_id===activity.id&&r.status==="submitted"); return <article className="speak-row" key={activity.id}><div className={classNames("speak-row-icon",typeMeta[content.content_type].className)}><Mic size={20}/></div><div className="speak-row-main"><div className="content-tags"><span>{content.cefr_level}</span><span>{formatDuration(activity.min_duration_seconds)}–{formatDuration(activity.max_duration_seconds)}</span>{assignedActivityIds.has(activity.id)&&<span className="assigned-tag">Assigned</span>}{done&&<span className="done-tag">Done</span>}</div><h3>{activity.title}</h3><p>{activity.speaking_prompt}</p></div><button className="btn btn-soft" onClick={()=>setSelectedActivity(activity)}>{done?"Practice again":"Start"}<ArrowRight size={15}/></button></article>})}</div></div>}
 
           {view === "progress" && <div className="student-page">
             <div className="page-intro"><div><div className="eyebrow">MY ENGLISH JOURNEY</div><h1>Your progress, reviews, and next steps.</h1><p>See what you submitted, what your teacher reviewed, and exactly what to improve next.</p></div></div>
@@ -1173,7 +1179,7 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
       <div className="builder-head"><div><div className="eyebrow">MATERIAL + ACTIVITY BUILDER</div><h2>Create the full learning loop.</h2></div><button className="icon-btn" onClick={()=>setBuilderOpen(false)}><X size={18}/></button></div>
       <form className="builder-form" onSubmit={createActivity}>
         <div className="form-grid two"><label><span>Activity / material title</span><input required value={builder.title} onChange={(e)=>setBuilder({...builder,title:e.target.value})} placeholder="Exercise Reflection"/></label><label><span>Topic</span><input required value={builder.topic} onChange={(e)=>setBuilder({...builder,topic:e.target.value})} placeholder="Health & Lifestyle"/></label></div>
-        <div className="form-grid three"><label><span>Input mode</span><select value={builder.type} onChange={(e)=>setBuilder({...builder,type:e.target.value})}><option value="read">Read</option><option value="watch">Watch</option><option value="listen">Listen</option></select></label><label><span>Material source</span><select value={builder.materialType} onChange={(e)=>{setBuilder({...builder,materialType:e.target.value});setPdfFile(null)}}><option value="text">Text / transcript</option><option value="youtube">YouTube link</option><option value="pdf">Upload PDF</option></select></label><label><span>CEFR target</span><select value={builder.level} onChange={(e)=>setBuilder({...builder,level:e.target.value})}><option>A1</option><option>A2</option><option>B1</option><option>B2</option></select></label></div>
+        <div className="form-grid three"><label><span>Input mode</span><select value={builder.type} onChange={(e)=>setBuilder({...builder,type:e.target.value})}><option value="read">Read</option><option value="watch">Watch</option><option value="listen">Listen</option></select></label><label><span>Material source</span><select value={builder.materialType} onChange={(e)=>{setBuilder({...builder,materialType:e.target.value});setPdfFile(null)}}><option value="text">Text / transcript</option><option value="youtube">YouTube link</option><option value="pdf">Upload PDF</option></select></label><label><span>CEFR target</span><select value={builder.level} onChange={(e)=>setBuilder({...builder,level:e.target.value})}><option>Pre-A1</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option></select></label></div>
         {builder.materialType==="youtube"&&<label><span>YouTube URL</span><input required type="url" value={builder.youtubeUrl} onChange={(e)=>setBuilder({...builder,youtubeUrl:e.target.value})} placeholder="https://www.youtube.com/watch?v=..."/></label>}
         {builder.materialType==="pdf"&&<label className="file-field"><span>PDF material <em>max 25 MB</em></span><input required type="file" accept="application/pdf,.pdf" onChange={(e)=>setPdfFile(e.target.files?.[0]||null)}/>{pdfFile&&<small>{pdfFile.name} · {(pdfFile.size/1024/1024).toFixed(1)} MB</small>}</label>}
         <div className="form-grid two"><label><span>Estimated minutes</span><input type="number" min="1" value={builder.duration} onChange={(e)=>setBuilder({...builder,duration:e.target.value})}/></label><label><span>Speaking target</span><div className="inline-number-fields"><input type="number" min="15" value={builder.min} onChange={(e)=>setBuilder({...builder,min:e.target.value})}/><span>to</span><input type="number" min="30" value={builder.max} onChange={(e)=>setBuilder({...builder,max:e.target.value})}/><span>sec</span></div></label></div>
@@ -1383,7 +1389,7 @@ export default function EnglishLoopApp() {
 
   function startDemo(role: "student" | "teacher") {
     setIsDemo(true);
-    const p: Profile = role === "student" ? { id: "demo-student", name: "Naila Putri", username: "naila", role: "student", cefr_level: "A2" } : { id: "demo-teacher", name: "Yusril Maulana", username: "yusril", role: "teacher", cefr_level: "B2" };
+    const p: Profile = role === "student" ? { id: "demo-student", name: "Naila Putri", username: "naila", role: "student", cefr_level: "Pre-A1" } : { id: "demo-teacher", name: "Yusril Maulana", username: "yusril", role: "teacher", cefr_level: "B2" };
     setProfile(p); setMode(role);
   }
 
