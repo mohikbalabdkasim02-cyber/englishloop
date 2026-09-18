@@ -51,6 +51,7 @@ export const demoContents: ContentItem[] = [
     content_body: "Hello! My name is Naila. I am a student. Nice to meet you!\n\nGreetings: hello, hi, good morning.\nAsk: What is your name?\nAnswer: My name is Naila.\nUseful words: hello, hi, name, student, morning.",
     vocabulary_focus: ["hello", "hi", "name", "student", "morning"],
     material_type: "text",
+    content_url: "/audio/greetings-self-introduction.mp3",
   },
   {
     id: "demo-foundation-alphabet",
@@ -107,6 +108,7 @@ export const demoContents: ContentItem[] = [
     content_body: "Hello! My name is Naila. I am fifteen years old. I am a student. I like music. Nice to meet you!\n\nReading pattern:\nHello! My name is ...\nI am ... years old.\nI am a student.\nI like ...\nNice to meet you!",
     vocabulary_focus: ["my name is", "years old", "student", "I like", "nice to meet you"],
     material_type: "text",
+    content_url: "/audio/full-self-introduction.mp3",
   },
   {
     id: "demo-a1-routine",

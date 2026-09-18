@@ -267,6 +267,7 @@ a { color: inherit; }
 .listening-sample > div { display:grid; flex:1; min-width:180px; gap:3px; }
 .listening-sample strong { font-size:14px; }
 .listening-sample small { color:var(--muted); font-size:11px; }
+.listening-sample audio { width:min(100%,300px); height:40px; }
 .listening-transcript { margin-top:16px; }
 .listening-transcript summary { cursor:pointer; font-weight:800; font-size:13px; }
 .listening-transcript p { white-space:pre-line; }
