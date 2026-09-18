@@ -44,6 +44,7 @@ import StudentCreateModal from "@/components/student-create-modal";
 import { PinChangeCard, StudentPinResetModal } from "@/components/pin-security";
 import StudentTaskStrip from "@/components/student-task-strip";
 import LearningMaterialPanel from "@/components/learning-material-panel";
+import YouTubeThumbnail from "@/components/youtube-thumbnail";
 import { SPEAKING_RUBRIC, RUBRIC_NAME, rubricOverall, rubricPerformanceLabel } from "@/lib/speaking-rubric";
 import {
   demoActivities,
@@ -151,14 +152,13 @@ function Brand({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function Landing({ onDemo, onLogin, onSetup }: { onDemo: (role: "student" | "teacher") => void; onLogin: () => void; onSetup: () => void }) {
+function Landing({ onDemo, onLogin }: { onDemo: (role: "student" | "teacher") => void; onLogin: () => void }) {
   return (
     <main className="landing-shell">
       <header className="landing-nav">
         <Brand />
         <div className="landing-nav-actions">
-          <button className="btn btn-ghost" onClick={onLogin}>Sign in</button>
-          <button className="btn btn-dark" onClick={onSetup}>Create first admin <ArrowRight size={16} /></button>
+          <button className="btn btn-dark landing-signin" onClick={onLogin}>Sign in <ArrowRight size={16} /></button>
         </div>
       </header>
 
@@ -168,9 +168,9 @@ function Landing({ onDemo, onLogin, onSetup }: { onDemo: (role: "student" | "tea
           <h1>Learn from English.<br /><span>Speak with English.</span></h1>
           <p>English Loop turns authentic input into short, repeatable speaking practice — so students do more than understand English. They use it.</p>
           <div className="hero-actions">
-            <button className="btn btn-primary btn-lg" onClick={onSetup}>Create first admin <ArrowRight size={18} /></button>
-            <button className="btn btn-soft btn-lg" onClick={() => onDemo("student")}>Try Student Demo</button>
-            <button className="btn btn-ghost btn-lg" onClick={() => onDemo("teacher")}>Teacher Demo</button>
+            <button className="btn btn-primary btn-lg" onClick={onLogin}>Sign in to English Loop <ArrowRight size={18} /></button>
+            <button className="btn btn-soft btn-lg" onClick={() => onDemo("student")}>Preview Student</button>
+            <button className="btn btn-ghost btn-lg" onClick={() => onDemo("teacher")}>Preview Teacher</button>
           </div>
           <div className="hero-proof">
             <div><strong>01</strong><span>Explore</span></div>
@@ -237,7 +237,7 @@ function Landing({ onDemo, onLogin, onSetup }: { onDemo: (role: "student" | "tea
   );
 }
 
-function LoginModal({ onClose, onSuccess, onSetup }: { onClose: () => void; onSuccess: (profile: Profile) => void; onSetup: () => void }) {
+function LoginModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (profile: Profile) => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -280,129 +280,7 @@ function LoginModal({ onClose, onSuccess, onSetup }: { onClose: () => void; onSu
           {error && <div className="form-error">{error}</div>}
           <button className="btn btn-primary btn-lg full" disabled={busy}>{busy ? <Loader2 className="spin" size={17} /> : <ArrowRight size={17} />} {busy ? "Signing in…" : "Sign in"}</button>
         </form>
-        <div className="demo-hint setup-login-hint"><Sparkles size={16} /><span>First real use?</span><button type="button" onClick={onSetup}>Create the first admin — no setup key</button></div>
-      </div>
-    </div>
-  );
-}
-
-function SetupAdminModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (profile: Profile) => void }) {
-  const [name, setName] = useState("Yusril Maulana");
-  const [username, setUsername] = useState("yusril");
-  const [pin, setPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    setError("");
-
-    const cleanUsername=username.trim().toLowerCase();
-    if(cleanUsername!=="yusril"){
-      setError("The first admin username must be yusril.");
-      return;
-    }
-    if(!/^\d{6}$/.test(pin)){
-      setError("PIN must contain exactly 6 digits.");
-      return;
-    }
-    if(pin!==confirmPin){
-      setError("PIN confirmation does not match.");
-      return;
-    }
-
-    const supabase=getSupabase();
-    if(!supabase){
-      setError("Supabase is not configured.");
-      return;
-    }
-
-    setBusy(true);
-    const email=`${cleanUsername}@englishloop.local`;
-
-    const {data:signUpData,error:signUpError}=await supabase.auth.signUp({
-      email,
-      password:pin,
-      options:{
-        data:{
-          name:name.trim()||"Yusril Maulana",
-          username:cleanUsername,
-          cefr_level:"A1"
-        }
-      }
-    });
-
-    if(signUpError){
-      setBusy(false);
-      const message=signUpError.message.toLowerCase();
-      if(message.includes("already")||message.includes("registered")){
-        setError("Admin account already exists. Close this window and use Sign in.");
-      }else{
-        setError(signUpError.message);
-      }
-      return;
-    }
-
-    let user=signUpData.user;
-    if(!signUpData.session){
-      await new Promise((resolve)=>setTimeout(resolve,450));
-      const {data:loginData,error:loginError}=await supabase.auth.signInWithPassword({email,password:pin});
-      if(loginError||!loginData.user){
-        setBusy(false);
-        setError("Admin account was created. Close this window, then sign in with username yusril and your PIN.");
-        return;
-      }
-      user=loginData.user;
-    }
-
-    if(!user){
-      setBusy(false);
-      setError("Could not create the admin account.");
-      return;
-    }
-
-    const {data:profileData,error:profileError}=await supabase.from("profiles")
-      .select("id,name,username,role,class_id,cefr_level")
-      .eq("id",user.id)
-      .single();
-
-    setBusy(false);
-    if(profileError||!profileData){
-      setError("Admin account exists, but the English Loop profile could not be loaded.");
-      return;
-    }
-    if(profileData.role!=="admin"&&profileData.role!=="teacher"){
-      setError("This project already has an admin. Sign in with the existing admin account.");
-      return;
-    }
-
-    onSuccess(profileData as Profile);
-  }
-
-  return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="setup-admin-modal" onMouseDown={(e)=>e.stopPropagation()}>
-        <button className="icon-btn modal-close" onClick={onClose}><X size={18}/></button>
-        <Brand />
-        <div className="setup-admin-copy">
-          <div className="eyebrow"><Settings size={14}/> FIRST REAL ADMIN</div>
-          <h2>Create Yusril&apos;s admin account.</h2>
-          <p>No Setup Key is required. English Loop only promotes <strong>yusril</strong> when no admin exists yet. After that, all student accounts are created from Admin Settings.</p>
-        </div>
-
-        <form className="stack-form" onSubmit={submit}>
-          <label><span>Admin name</span><input value={name} onChange={(e)=>setName(e.target.value)} required autoFocus/></label>
-          <label><span>Admin username</span><input value={username} onChange={(e)=>setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g,""))} minLength={3} maxLength={32} required/></label>
-          <div className="form-grid two">
-            <label><span>Choose 6-digit PIN</span><input type="password" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} value={pin} onChange={(e)=>setPin(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="6-digit PIN" required/></label>
-            <label><span>Confirm PIN</span><input type="password" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} value={confirmPin} onChange={(e)=>setConfirmPin(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="Repeat PIN" required/></label>
-          </div>
-          {error&&<div className="form-error">{error}</div>}
-          <button className="btn btn-primary btn-lg full" disabled={busy}>{busy?<Loader2 className="spin" size={17}/>:<ArrowRight size={17}/>} {busy?"Creating admin…":"Create admin & enter English Loop"}</button>
-        </form>
-
-        <div className="setup-security-note"><CheckCircle2 size={16}/><span>After this first admin exists, this flow can no longer create another admin. Add students from <strong>Admin Settings → Students & PIN Access</strong>.</span></div>
+        <div className="demo-hint"><CheckCircle2 size={16} /><span>Students and PIN access are managed by the English Loop admin.</span></div>
       </div>
     </div>
   );
@@ -710,14 +588,46 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
             <div className="section-row"><div><h2>Pick up where you left off</h2><p>Short input. Real speaking.</p></div><button className="text-btn" onClick={() => setView("explore")}>See all <ArrowRight size={15} /></button></div>
             <div className="content-scroll">{contents.slice(0,3).map((content) => {
               const meta = typeMeta[content.content_type]; const Icon = meta.icon; const activity = activities.find((a) => a.content_id === content.id);
-              return <article className="content-card" key={content.id} onClick={() => activity && setSelectedActivity(activity)}><div className={classNames("content-card-art",meta.className)}><Icon size={22} /><span>{content.content_type}</span></div><div className="content-card-body"><div className="content-tags"><span>{content.cefr_level}</span><span>{content.duration_minutes} min</span></div><h3>{content.title}</h3><p>{content.topic}</p></div><button className="round-arrow"><ChevronRight size={17} /></button></article>;
+              const isYouTube=(content.material_type||content.format?.toLowerCase())==="youtube";
+              return <article
+                className={classNames("content-card",isYouTube&&"youtube-content-card")}
+                key={content.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => activity && setSelectedActivity(activity)}
+                onKeyDown={(e)=>{if((e.key==="Enter"||e.key===" ")&&activity){e.preventDefault();setSelectedActivity(activity)}}}
+              >
+                {isYouTube
+                  ? <YouTubeThumbnail url={content.content_url} title={content.title} compact />
+                  : <div className={classNames("content-card-art",meta.className)}><Icon size={22} /><span>{content.content_type}</span></div>}
+                <div className="content-card-body"><div className="content-tags"><span>{content.cefr_level}</span><span>{content.duration_minutes} min</span>{isYouTube&&<span>YouTube</span>}</div><h3>{content.title}</h3><p>{content.topic}</p></div><button className="round-arrow" aria-label={`Open ${content.title}`}><ChevronRight size={17} /></button>
+              </article>;
             })}</div>
           </div>}
 
           {view === "explore" && <div className="student-page">
             <div className="page-intro"><div><div className="eyebrow">CONTENT LIBRARY</div><h1>Find something worth talking about.</h1><p>Choose by mood, level, or the way you want to consume English.</p></div></div>
             <div className="explore-toolbar"><div className="search-box"><Search size={17} /><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Search topic or title" /></div><div className="filter-tabs">{["all","watch","listen","read"].map((item) => <button key={item} className={classNames(filter===item&&"selected")} onClick={()=>setFilter(item as typeof filter)}>{item[0].toUpperCase()+item.slice(1)}</button>)}</div></div>
-            <div className="library-grid">{filteredContents.map((content) => { const meta=typeMeta[content.content_type]; const Icon=meta.icon; const activity=activities.find((a)=>a.content_id===content.id); return <article className="library-card" key={content.id}><div className={classNames("library-art",meta.className)}><div className="library-icon"><Icon size={26}/></div><div className="library-level">{content.cefr_level}</div><span>{meta.label}</span></div><div className="library-body"><div className="content-tags"><span>{content.format}</span><span>{content.duration_minutes} min</span></div><h3>{content.title}</h3><p>{content.description}</p><div className="library-footer"><span>{content.topic}</span><button onClick={()=>activity&&setSelectedActivity(activity)}><ArrowRight size={16}/></button></div></div></article>})}</div>
+            <div className="library-grid">{filteredContents.map((content) => {
+              const meta=typeMeta[content.content_type];
+              const Icon=meta.icon;
+              const activity=activities.find((a)=>a.content_id===content.id);
+              const isYouTube=(content.material_type||content.format?.toLowerCase())==="youtube";
+              const open=()=>activity&&setSelectedActivity(activity);
+              return <article
+                className={classNames("library-card",isYouTube&&"youtube-library-card")}
+                key={content.id}
+                role="button"
+                tabIndex={0}
+                onClick={open}
+                onKeyDown={(e)=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();open()}}}
+              >
+                {isYouTube
+                  ? <YouTubeThumbnail url={content.content_url} title={content.title} level={content.cefr_level} />
+                  : <div className={classNames("library-art",meta.className)}><div className="library-icon"><Icon size={26}/></div><div className="library-level">{content.cefr_level}</div><span>{meta.label}</span></div>}
+                <div className="library-body"><div className="content-tags"><span>{content.format}</span><span>{content.duration_minutes} min</span></div><h3>{content.title}</h3><p>{content.description||`${content.topic} · ${content.cefr_level}`}</p><div className="library-footer"><span>{content.topic}</span><button onClick={(e)=>{e.stopPropagation();open()}} aria-label={`Open ${content.title}`}><ArrowRight size={16}/></button></div></div>
+              </article>
+            })}{!filteredContents.length&&<div className="library-empty"><Video size={24}/><h3>No materials yet</h3><p>Your teacher&apos;s published materials will appear here.</p></div>}</div>
           </div>}
 
           {view === "speak" && <div className="student-page"><div className="page-intro"><div><div className="eyebrow">SPEAK</div><h1>Your voice is the output.</h1><p>Choose a challenge. You already have something to say.</p></div></div><div className="speak-list">{practiceActivities.map((activity) => { const content=contents.find((c)=>c.id===activity.content_id); if(!content) return null; const done=responses.some((r)=>r.activity_id===activity.id&&r.status==="submitted"); return <article className="speak-row" key={activity.id}><div className={classNames("speak-row-icon",typeMeta[content.content_type].className)}><Mic size={20}/></div><div className="speak-row-main"><div className="content-tags"><span>{content.cefr_level}</span><span>{formatDuration(activity.min_duration_seconds)}–{formatDuration(activity.max_duration_seconds)}</span>{assignedActivityIds.has(activity.id)&&<span className="assigned-tag">Assigned</span>}{done&&<span className="done-tag">Done</span>}</div><h3>{activity.title}</h3><p>{activity.speaking_prompt}</p></div><button className="btn btn-soft" onClick={()=>setSelectedActivity(activity)}>{done?"Practice again":"Start"}<ArrowRight size={15}/></button></article>})}</div></div>}
@@ -1173,7 +1083,6 @@ export default function EnglishLoopApp() {
   const [isDemo, setIsDemo] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [showLogin, setShowLogin] = useState(false);
-  const [showSetup, setShowSetup] = useState(false);
   const [booting, setBooting] = useState(true);
 
   useEffect(() => {
@@ -1203,10 +1112,9 @@ export default function EnglishLoopApp() {
 
   if (booting) return <div className="boot-screen"><div className="boot-logo"><Brand /></div><Loader2 className="spin" /></div>;
   return <>
-    {mode === "landing" && <Landing onDemo={startDemo} onLogin={() => setShowLogin(true)} onSetup={() => setShowSetup(true)} />}
+    {mode === "landing" && <Landing onDemo={startDemo} onLogin={() => setShowLogin(true)} />}
     {mode === "student" && profile && <StudentShell profile={profile} isDemo={isDemo} onLogout={logout} />}
     {mode === "teacher" && profile && <TeacherShell profile={profile} isDemo={isDemo} onLogout={logout} />}
-    {showLogin && <LoginModal onClose={() => setShowLogin(false)} onSetup={() => { setShowLogin(false); setShowSetup(true); }} onSuccess={(p) => { setProfile(p); setIsDemo(false); setMode(p.role === "student" ? "student" : "teacher"); setShowLogin(false); }} />}
-    {showSetup && <SetupAdminModal onClose={() => setShowSetup(false)} onSuccess={(p) => { setProfile(p); setIsDemo(false); setMode("teacher"); setShowSetup(false); }} />}
+    {showLogin && <LoginModal onClose={() => setShowLogin(false)} onSuccess={(p) => { setProfile(p); setIsDemo(false); setMode(p.role === "student" ? "student" : "teacher"); setShowLogin(false); }} />}
   </>;
 }

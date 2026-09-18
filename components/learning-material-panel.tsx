@@ -3,19 +3,7 @@ import { ExternalLink, FileText, Loader2, Video } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import type { ContentItem } from "@/lib/demo-data";
-
-function youtubeId(url?:string|null){
-  if(!url)return null;
-  try{
-    const parsed=new URL(url);
-    if(parsed.hostname.includes("youtu.be"))return parsed.pathname.split("/").filter(Boolean)[0]||null;
-    if(parsed.hostname.includes("youtube.com")){
-      if(parsed.pathname.startsWith("/shorts/")||parsed.pathname.startsWith("/embed/"))return parsed.pathname.split("/")[2]||null;
-      return parsed.searchParams.get("v");
-    }
-  }catch{}
-  return null;
-}
+import { youtubeId } from "@/lib/youtube";
 
 export default function LearningMaterialPanel({content}:{content:ContentItem}){
   const materialType=content.material_type||(content.format?.toLowerCase()==="youtube"?"youtube":content.format?.toLowerCase()==="pdf"?"pdf":"text");
@@ -36,7 +24,7 @@ export default function LearningMaterialPanel({content}:{content:ContentItem}){
   if(materialType==="youtube"){
     if(!videoId)return <div className="material-error">The YouTube link could not be previewed.</div>;
     return <div className="material-panel youtube-material">
-      <div className="material-frame"><iframe src={`https://www.youtube.com/embed/${videoId}`} title={content.title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen/></div>
+      <div className="material-frame"><iframe loading="lazy" src={`https://www.youtube-nocookie.com/embed/${videoId}?rel=0`} title={content.title} referrerPolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen/></div>
       <div className="material-meta"><div><Video size={18}/><span><strong>YouTube input</strong><small>{content.source||"External video"}</small></span></div><a href={content.content_url||"#"} target="_blank" rel="noreferrer">Open on YouTube <ExternalLink size={14}/></a></div>
       {content.content_body&&<p className="material-note">{content.content_body}</p>}
     </div>;
