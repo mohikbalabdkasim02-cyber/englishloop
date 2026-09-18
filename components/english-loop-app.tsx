@@ -103,6 +103,17 @@ type FeedbackRow = {
   overall_score?: number | null;
   positive_feedback: string;
   improvement_feedback: string;
+  rubric_name?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type StudentReviewItem = {
+  response: ResponseRow;
+  speaking?: SpeakingRow;
+  feedback?: FeedbackRow;
+  activity?: ActivityItem;
+  content?: ContentItem;
 };
 
 type AssignmentRow = {
@@ -480,6 +491,7 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   })) : []);
   const [vocabulary, setVocabulary] = useState<Array<{ id?: string; word: string; meaning?: string | null }>>([]);
   const [selectedActivity, setSelectedActivity] = useState<ActivityItem | null>(null);
+  const [selectedReview, setSelectedReview] = useState<StudentReviewItem | null>(null);
   const [filter, setFilter] = useState<"all" | "watch" | "listen" | "read">("all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(!isDemo);
@@ -495,7 +507,7 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
       supabase.from("activity_questions").select("*").order("sort_order"),
       supabase.from("responses").select("*").eq("student_id", profile.id).order("created_at", { ascending: false }),
       supabase.from("speaking_submissions").select("*").order("created_at", { ascending: false }),
-      supabase.from("feedback").select("*"),
+      supabase.from("feedback").select("*").order("created_at", { ascending: false }),
       supabase.from("vocabulary").select("*").eq("student_id", profile.id).order("created_at", { ascending: false }),
       supabase.from("assignments").select("*").order("created_at", { ascending: false }),
     ]);
@@ -527,6 +539,31 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
     || activities.find((a) => !responses.some((r) => r.activity_id === a.id && r.status === "submitted"))
     || activities[0];
   const filteredContents = contents.filter((item) => (filter === "all" || item.content_type === filter) && `${item.title} ${item.topic}`.toLowerCase().includes(search.toLowerCase()));
+
+  const speakingByResponse = useMemo(() => Object.fromEntries(speaking.map((item) => [item.response_id, item])), [speaking]);
+  const feedbackBySpeaking = useMemo(() => Object.fromEntries(feedback.map((item) => [item.speaking_id, item])), [feedback]);
+  const activityById = useMemo(() => Object.fromEntries(activities.map((item) => [item.id, item])), [activities]);
+  const contentById = useMemo(() => Object.fromEntries(contents.map((item) => [item.id, item])), [contents]);
+  const reviewItems = useMemo<StudentReviewItem[]>(() => responses
+    .filter((response) => response.status === "submitted")
+    .map((response) => {
+      const speakingItem = speakingByResponse[response.id] as SpeakingRow | undefined;
+      const activityItem = activityById[response.activity_id] as ActivityItem | undefined;
+      return {
+        response,
+        speaking: speakingItem,
+        feedback: speakingItem ? feedbackBySpeaking[speakingItem.id] as FeedbackRow | undefined : undefined,
+        activity: activityItem,
+        content: activityItem ? contentById[activityItem.content_id] as ContentItem | undefined : undefined,
+      };
+    })
+    .sort((a,b) => new Date(b.response.submitted_at || 0).getTime() - new Date(a.response.submitted_at || 0).getTime()),
+  [responses, speakingByResponse, feedbackBySpeaking, activityById, contentById]);
+  const reviewedItems = reviewItems.filter((item) => Boolean(item.feedback));
+  const averageReviewScore = reviewedItems.length
+    ? Math.round(reviewedItems.reduce((sum,item)=>sum+(item.feedback?.overall_score ?? 0),0)/reviewedItems.length)
+    : null;
+  const latestReviewed = reviewedItems[0];
 
   async function submitActivity(payload: { answers: Record<string, string>; confidence: number; difficulty: string; note: string; audioBlob: Blob; audioSeconds: number }) {
     if (!selectedActivity) return;
@@ -632,7 +669,59 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
 
           {view === "speak" && <div className="student-page"><div className="page-intro"><div><div className="eyebrow">SPEAK</div><h1>Your voice is the output.</h1><p>Choose a challenge. You already have something to say.</p></div></div><div className="speak-list">{practiceActivities.map((activity) => { const content=contents.find((c)=>c.id===activity.content_id); if(!content) return null; const done=responses.some((r)=>r.activity_id===activity.id&&r.status==="submitted"); return <article className="speak-row" key={activity.id}><div className={classNames("speak-row-icon",typeMeta[content.content_type].className)}><Mic size={20}/></div><div className="speak-row-main"><div className="content-tags"><span>{content.cefr_level}</span><span>{formatDuration(activity.min_duration_seconds)}–{formatDuration(activity.max_duration_seconds)}</span>{assignedActivityIds.has(activity.id)&&<span className="assigned-tag">Assigned</span>}{done&&<span className="done-tag">Done</span>}</div><h3>{activity.title}</h3><p>{activity.speaking_prompt}</p></div><button className="btn btn-soft" onClick={()=>setSelectedActivity(activity)}>{done?"Practice again":"Start"}<ArrowRight size={15}/></button></article>})}</div></div>}
 
-          {view === "progress" && <div className="student-page"><div className="page-intro"><div><div className="eyebrow">MY ENGLISH JOURNEY</div><h1>Progress you can actually see.</h1><p>Not perfection. More exposure, more expression, more confidence over time.</p></div></div><div className="journey-hero"><div><small>TOTAL ACTIVE ENGLISH</small><strong>{Math.max(Math.round(speakingSeconds/60), isDemo?12:0)} min</strong><span>of speaking practice</span></div><div className="journey-bars">{[38,51,70,94,112].map((n,i)=><div key={n}><span style={{height:`${25+i*14}%`}}/><small>W{i+1}</small></div>)}</div></div><div className="stat-grid">{stats.map(({label,value,icon:Icon})=><div className="stat-card" key={label}><div className="stat-icon"><Icon size={18}/></div><strong>{value}</strong><span>{label}</span></div>)}</div><div className="progress-columns"><section className="panel-card"><div className="panel-title"><div><h3>Vocabulary collected</h3><p>Words you met inside real context.</p></div><BookOpen size={20}/></div><div className="word-cloud">{vocabulary.slice(0,12).map((item,i)=><span key={`${item.word}-${i}`}>{item.word}</span>)}</div></section><section className="panel-card"><div className="panel-title"><div><h3>Latest teacher feedback</h3><p>Use one improvement at a time.</p></div><MessageSquareText size={20}/></div>{feedback.length?<div className="feedback-snippet"><strong>You did well</strong><p>{feedback[0].positive_feedback}</p><strong>Try this next</strong><p>{feedback[0].improvement_feedback}</p></div>:<div className="empty-mini"><Sparkles size={22}/><p>Your teacher feedback will appear here after a speaking submission is reviewed.</p></div>}</section></div></div>}
+          {view === "progress" && <div className="student-page">
+            <div className="page-intro"><div><div className="eyebrow">MY ENGLISH JOURNEY</div><h1>Your progress, reviews, and next steps.</h1><p>See what you submitted, what your teacher reviewed, and exactly what to improve next.</p></div></div>
+
+            <div className="journey-hero review-journey-hero">
+              <div><small>TEACHER-REVIEWED SPEAKING</small><strong>{averageReviewScore!==null?`${averageReviewScore}/100`:"—"}</strong><span>{reviewedItems.length ? `average from ${reviewedItems.length} review${reviewedItems.length===1?"":"s"}` : "Your score appears after your first teacher review."}</span></div>
+              <div className="review-journey-summary">
+                <div><strong>{completed}</strong><span>submitted</span></div>
+                <div><strong>{reviewedItems.length}</strong><span>reviewed</span></div>
+                <div><strong>{Math.max(completed-reviewedItems.length,0)}</strong><span>waiting</span></div>
+              </div>
+            </div>
+
+            <div className="stat-grid">{stats.map(({label,value,icon:Icon})=><div className="stat-card" key={label}><div className="stat-icon"><Icon size={18}/></div><strong>{value}</strong><span>{label}</span></div>)}</div>
+
+            <section className="student-results-section">
+              <div className="section-row results-section-head"><div><h2>Speaking reviews</h2><p>Your teacher&apos;s scores and feedback for every submitted speaking activity.</p></div>{reviewedItems.length>0&&<span className="reviewed-count"><Trophy size={14}/>{reviewedItems.length} reviewed</span>}</div>
+              <div className="student-review-list">
+                {reviewItems.map((item) => {
+                  const reviewed=Boolean(item.feedback);
+                  const score=item.feedback?.overall_score;
+                  return <article className={classNames("student-review-card",reviewed&&"is-reviewed")} key={item.response.id}>
+                    <div className="student-review-score">
+                      {reviewed?<><strong>{score ?? "—"}</strong><span>/100</span></>:<Clock3 size={22}/>}
+                    </div>
+                    <div className="student-review-main">
+                      <div className="student-review-topline">
+                        <span className={classNames("review-status",reviewed?"reviewed":"waiting")}>{reviewed?"Reviewed":"Waiting for teacher review"}</span>
+                        <small>{item.response.submitted_at ? new Date(item.response.submitted_at).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}) : "Submitted"}</small>
+                      </div>
+                      <h3>{item.activity?.title || item.content?.title || "Speaking activity"}</h3>
+                      <p>{reviewed
+                        ? item.feedback?.improvement_feedback || "Open your result to see the full rubric."
+                        : "Your recording has been submitted. Your teacher will listen and publish a review."}</p>
+                      {reviewed&&<div className="review-mini-scores">
+                        <span>Task {item.feedback?.task_fulfilment ?? item.feedback?.comprehension}/5</span>
+                        <span>Fluency {item.feedback?.fluency}/5</span>
+                        <span>Grammar {item.feedback?.grammar ?? item.feedback?.confidence}/5</span>
+                        <span>Vocabulary {item.feedback?.vocabulary}/5</span>
+                        <span>Pronunciation {item.feedback?.pronunciation}/5</span>
+                      </div>}
+                    </div>
+                    <button className="btn btn-soft student-review-open" onClick={()=>setSelectedReview(item)}>{reviewed?"View result":"View submission"}<ChevronRight size={15}/></button>
+                  </article>
+                })}
+                {!reviewItems.length&&<div className="student-review-empty"><Mic size={26}/><h3>No speaking submissions yet</h3><p>Complete a speaking activity first. Your teacher review will appear here afterward.</p></div>}
+              </div>
+            </section>
+
+            <div className="progress-columns">
+              <section className="panel-card"><div className="panel-title"><div><h3>Vocabulary collected</h3><p>Words you met inside real context.</p></div><BookOpen size={20}/></div>{vocabulary.length?<div className="word-cloud">{vocabulary.slice(0,12).map((item,i)=><span key={`${item.word}-${i}`}>{item.word}</span>)}</div>:<div className="empty-mini"><BookOpen size={22}/><p>Useful words you collect from activities will appear here.</p></div>}</section>
+              <section className="panel-card"><div className="panel-title"><div><h3>Latest teacher feedback</h3><p>Focus on one improvement at a time.</p></div><MessageSquareText size={20}/></div>{latestReviewed?.feedback?<div className="feedback-snippet"><strong>You did well</strong><p>{latestReviewed.feedback.positive_feedback}</p><strong>Try this next</strong><p>{latestReviewed.feedback.improvement_feedback}</p><button className="text-btn" onClick={()=>setSelectedReview(latestReviewed)}>Open full review <ArrowRight size={14}/></button></div>:<div className="empty-mini"><Sparkles size={22}/><p>Your teacher feedback will appear here after a speaking submission is reviewed.</p></div>}</section>
+            </div>
+          </div>}
 
           {view === "profile" && <div className="student-page">
             <div className="profile-card">
@@ -650,12 +739,70 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
       <nav className="student-bottom-nav">
         {[
           ["home","Home",Home],["explore","Explore",Compass],["speak","Speak",Mic],["progress","Progress",BarChart3],["profile","Profile",User]
-        ].map(([key,label,Icon])=>{const IconComp=Icon as typeof Home; return <button key={key as string} className={classNames(view===key&&"active")} onClick={()=>setView(key as StudentView)}><IconComp size={20}/><span>{label as string}</span></button>})}
+        ].map(([key,label,Icon])=>{const IconComp=Icon as typeof Home; return <button key={key as string} className={classNames(view===key&&"active")} onClick={()=>{setView(key as StudentView);if(key==="progress"&&!isDemo)void loadData()}}><IconComp size={20}/><span>{label as string}</span></button>})}
       </nav>
 
-      {selectedActivity && selectedContent && <ActivityExperience activity={selectedActivity} content={selectedContent} questions={selectedQuestions} onClose={()=>setSelectedActivity(null)} onSubmit={submitActivity}/>} 
+      {selectedActivity && selectedContent && <ActivityExperience activity={selectedActivity} content={selectedContent} questions={selectedQuestions} onClose={()=>setSelectedActivity(null)} onSubmit={submitActivity}/>}
+      {selectedReview && <StudentResultModal item={selectedReview} questions={questions} isDemo={isDemo} onClose={()=>setSelectedReview(null)} />}
     </div>
   );
+}
+
+function StudentResultModal({item,questions,isDemo,onClose}:{item:StudentReviewItem;questions:QuestionItem[];isDemo:boolean;onClose:()=>void}){
+  const reviewed=Boolean(item.feedback);
+  const feedback=item.feedback;
+  const responseQuestions=questions.filter((q)=>q.activity_id===item.response.activity_id).sort((a,b)=>a.sort_order-b.sort_order);
+  const criteria=[
+    ["Task Fulfilment",feedback?.task_fulfilment ?? feedback?.comprehension],
+    ["Fluency & Coherence",feedback?.fluency],
+    ["Grammar",feedback?.grammar ?? feedback?.confidence],
+    ["Vocabulary",feedback?.vocabulary],
+    ["Pronunciation & Intelligibility",feedback?.pronunciation],
+  ] as Array<[string,number|undefined|null]>;
+  const score=feedback?.overall_score ?? null;
+
+  return <div className="student-result-backdrop" onMouseDown={onClose}>
+    <aside className="student-result-drawer" onMouseDown={(e)=>e.stopPropagation()}>
+      <div className="student-result-head">
+        <button className="icon-btn" onClick={onClose}><X size={18}/></button>
+        <div><span>{reviewed?"TEACHER REVIEW":"SUBMISSION"}</span><h2>{item.activity?.title || item.content?.title || "Speaking activity"}</h2><p>{item.response.submitted_at?new Date(item.response.submitted_at).toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"}):"Submitted"}</p></div>
+        <div className={classNames("result-status-pill",reviewed?"reviewed":"waiting")}>{reviewed?"Reviewed":"Waiting"}</div>
+      </div>
+
+      <div className="student-result-scroll">
+        {reviewed&&<section className="result-score-hero">
+          <div><span>OVERALL SCORE</span><strong>{score ?? "—"}<small>/100</small></strong><p>{score!==null?rubricPerformanceLabel(score):"Teacher-reviewed result"}</p></div>
+          <Trophy size={30}/>
+        </section>}
+
+        {item.speaking&&<section className="result-section">
+          <div className="result-section-title"><div><span>MY RECORDING</span><strong>Listen back to your speaking</strong></div><small>{formatDuration(item.speaking.duration_seconds)}</small></div>
+          <PrivateAudioPlayer storagePath={item.speaking.storage_path} isDemo={isDemo}/>
+        </section>}
+
+        {reviewed&&<section className="result-section">
+          <div className="result-section-title"><div><span>RUBRIC BREAKDOWN</span><strong>{feedback?.rubric_name || RUBRIC_NAME}</strong></div></div>
+          <div className="result-rubric-list">{criteria.map(([label,value])=><div className="result-rubric-row" key={label}><span>{label}</span><div className="result-score-dots">{[1,2,3,4,5].map(n=><i key={n} className={n<=(value||0)?"filled":""}/>)}</div><strong>{value ?? "—"}/5</strong></div>)}</div>
+        </section>}
+
+        {reviewed&&<section className="result-feedback-grid">
+          <div className="result-feedback-card strength"><CheckCircle2 size={18}/><span>YOU DID WELL</span><p>{feedback?.positive_feedback}</p></div>
+          <div className="result-feedback-card next"><ArrowRight size={18}/><span>NEXT STEP</span><p>{feedback?.improvement_feedback}</p></div>
+        </section>}
+
+        <section className="result-section">
+          <div className="result-section-title"><div><span>MY RESPONSES</span><strong>What you submitted</strong></div></div>
+          <div className="result-answer-list">
+            {responseQuestions.map((q)=><div className="result-answer" key={q.id}><span>{q.prompt}</span><p>{item.response.answers?.[q.id] || "No written answer"}</p></div>)}
+            {item.response.reflection_note&&<div className="result-answer reflection"><span>Reflection</span><p>{item.response.reflection_note}</p></div>}
+            {!responseQuestions.length&&!item.response.reflection_note&&<div className="answer-review-empty">No written responses were submitted with this activity.</div>}
+          </div>
+        </section>
+
+        {!reviewed&&<section className="result-waiting-card"><Clock3 size={24}/><div><strong>Waiting for teacher review</strong><p>Your recording is submitted. Once your teacher listens and saves the assessment, your score, rubric breakdown, and feedback will appear here automatically.</p></div></section>}
+      </div>
+    </aside>
+  </div>
 }
 
 function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo: boolean; onLogout: () => void }) {
