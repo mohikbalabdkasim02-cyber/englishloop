@@ -545,4 +545,28 @@ a { color: inherit; }
   .activity-heading h1 { font-size: 36px; }
   .content-reader { padding: 20px; }
   .content-reader p { font-size: 16px; }
-  .activity-next { justify-self: 
+  .activity-next { justify-self: stretch; width: 100%; }
+  .question-card { grid-template-columns: 1fr; }
+  .question-number { width: 30px; height: 30px; }
+  .recorder-card { padding: 24px 15px; }
+  .success-panel { margin: 45px auto; }
+  .success-panel h1 { font-size: 36px; }
+  .success-stats { grid-template-columns: 1fr; }
+  .teacher-page-head { align-items: flex-start; flex-direction: column; }
+  .teacher-page-head .btn { width: 100%; }
+  .teacher-stats { grid-template-columns: 1fr 1fr; }
+  .teacher-grid { gap: 10px; }
+  .teacher-panel { padding: 15px; overflow-x: auto; }
+  .submission-table { min-width: 600px; }
+  .teacher-content-card { grid-template-columns: 48px 1fr 38px; }
+  .activity-admin-list article { grid-template-columns: 30px 1fr; }
+  .pair-badge { grid-column: 2; justify-self: start; }
+  .metric-hero { grid-template-columns: 1fr; }
+  .metric-hero > div:last-child { text-align: left; }
+  .student-progress-row { grid-template-columns: 95px 1fr 42px; }
+  .form-grid.two, .form-grid.three { grid-template-columns: 1fr; }
+  .builder-modal { border-radius: 22px 22px 0 0; align-self: flex-end; max-height: 92vh; }
+  .modal-backdrop { align-items: flex-end; padding: 0; }
+  .login-modal { border-radius: 22px 22px 0 0; }
+  .feedback-drawer { width: 100%; }
+}
