@@ -131,6 +131,16 @@ const typeMeta = {
   read: { label: "Read", icon: BookOpen, className: "type-read" },
 };
 
+function MaterialResourceCard({ content, activity, onOpen }: { content: ContentItem; activity: ActivityItem; onOpen: (activity: ActivityItem) => void }) {
+  const isVideo = content.material_type === "youtube";
+  return <article className="library-card resource-card">
+    <button type="button" className="resource-card-link" onClick={() => onOpen(activity)} aria-label={`Open ${isVideo ? "YouTube video" : "PDF"}: ${content.title}, ${content.topic}, ${content.cefr_level}`}>
+      {isVideo ? <YouTubeThumbnail url={content.content_url} title={content.title} level={content.cefr_level} /> : <div className="library-art type-read"><div className="library-icon"><BookOpen size={25} /></div><span className="library-level">{content.cefr_level}</span></div>}
+      <div className="library-body"><div className="content-tags"><span>{content.cefr_level}</span><span>{isVideo ? "YouTube" : "PDF"}</span></div><h3>{content.title}</h3><p>{content.topic || content.description}</p><div className="library-footer"><span>{content.duration_minutes || 0} min · {content.cefr_level}</span><span className="resource-open-label">Open material <ArrowRight size={15} /></span></div></div>
+    </button>
+  </article>;
+}
+
 function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
@@ -638,6 +648,13 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
             <div className="stat-grid">{stats.map(({label,value,icon: Icon}) => <div className="stat-card" key={label}><div className="stat-icon"><Icon size={18} /></div><strong>{value}</strong><span>{label}</span></div>)}</div>
             <StudentTaskStrip assignments={assignments} activities={taskActivities} contents={contents} responses={responses} onOpen={setSelectedActivity} />
             <button className="text-btn" onClick={() => setView("tasks")}>See the full pathway <ArrowRight size={15} /></button>
+            {resourceMaterials.some((content) => content.material_type === "youtube") && <section>
+              <div className="section-row"><div><h2>Watch & learn</h2><p>Video YouTube sebelumnya tetap tersedia untuk latihan tambahan.</p></div><button className="text-btn" onClick={() => setView("tasks")}>See all videos <ArrowRight size={15} /></button></div>
+              <div className="library-grid">{resourceMaterials.filter((content) => content.material_type === "youtube").slice(0, 3).map((content) => {
+                const activity = activities.find((item) => item.content_id === content.id)!;
+                return <MaterialResourceCard key={content.id} content={content} activity={activity} onOpen={setSelectedActivity} />;
+              })}</div>
+            </section>}
           </div>}
 
           {view === "tasks" && <div className="student-page">
@@ -669,13 +686,7 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
               <div className="section-row" id="more-materials"><div><h2 id="resource-heading">Video YouTube & PDF</h2><p>Materi yang sudah ada tetap bisa dibuka. Levelnya terlihat agar kamu bisa memilih latihan yang sesuai.</p></div></div>
               <div className="library-grid">{resourceMaterials.map((content) => {
                 const activity = activities.find((item) => item.content_id === content.id)!;
-                const isVideo = content.material_type === "youtube";
-                return <article className="library-card resource-card" key={content.id}>
-                  <button type="button" className="resource-card-link" onClick={() => setSelectedActivity(activity)} aria-label={`Open ${isVideo ? "YouTube video" : "PDF"}: ${content.title}, ${content.topic}, ${content.cefr_level}`}>
-                    {isVideo ? <YouTubeThumbnail url={content.content_url} title={content.title} level={content.cefr_level} /> : <div className="library-art type-read"><div className="library-icon"><BookOpen size={25} /></div><span className="library-level">{content.cefr_level}</span></div>}
-                    <div className="library-body"><div className="content-tags"><span>{content.cefr_level}</span><span>{isVideo ? "YouTube" : "PDF"}</span></div><h3>{content.title}</h3><p>{content.topic || content.description}</p><div className="library-footer"><span>{content.duration_minutes || 0} min · {content.cefr_level}</span><span className="resource-open-label">Open material <ArrowRight size={15} /></span></div></div>
-                  </button>
-                </article>;
+                return <MaterialResourceCard key={content.id} content={content} activity={activity} onOpen={setSelectedActivity} />;
               })}</div>
             </section>}
           </div>}
