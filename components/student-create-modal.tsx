@@ -27,7 +27,7 @@ export default function StudentCreateModal({
     name: "",
     username: "",
     password: "254912",
-    cefr_level: "A1",
+    cefr_level: "Pre-A1",
     class_id: classes[0]?.id ?? "",
   });
   const [busy, setBusy] = useState(false);
@@ -130,6 +130,7 @@ export default function StudentCreateModal({
                 value={form.cefr_level}
                 onChange={(event) => setForm({ ...form, cefr_level: event.target.value })}
               >
+                <option>Pre-A1</option>
                 <option>A1</option>
                 <option>A2</option>
                 <option>B1</option>
