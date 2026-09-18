@@ -1,5 +1,5 @@
 "use client";
-import { ExternalLink, FileText, Headphones, Loader2, Volume2, Video } from "lucide-react";
+import { ExternalLink, FileText, Headphones, Loader2, Video } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import type { ContentItem } from "@/lib/demo-data";
@@ -10,27 +10,6 @@ export default function LearningMaterialPanel({content}:{content:ContentItem}){
   const videoId=useMemo(()=>youtubeId(content.content_url),[content.content_url]);
   const [pdfUrl,setPdfUrl]=useState<string|null>(materialType==="pdf"&&content.content_url?.startsWith("blob:")?content.content_url:null);
   const [pdfError,setPdfError]=useState("");
-  const [speaking,setSpeaking]=useState(false);
-  const [speechError,setSpeechError]=useState("");
-
-  useEffect(()=>()=>{if(content.content_type==="listen"&&typeof window!=="undefined")window.speechSynthesis?.cancel()},[content.id,content.content_type]);
-
-  function playListening(){
-    if(!("speechSynthesis" in window)){
-      setSpeechError("Audio playback is unavailable in this browser. Read the transcript below.");
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const sample=content.content_body.split("\n\n")[0];
-    const utterance=new SpeechSynthesisUtterance(sample);
-    utterance.lang="en-US";
-    utterance.rate=0.82;
-    utterance.onend=()=>setSpeaking(false);
-    utterance.onerror=()=>{setSpeaking(false);setSpeechError("Audio playback failed. Read the transcript below.")};
-    setSpeechError("");
-    setSpeaking(true);
-    window.speechSynthesis.speak(utterance);
-  }
 
   useEffect(()=>{
     if(materialType!=="pdf"||pdfUrl||!content.storage_path)return;
@@ -58,8 +37,7 @@ export default function LearningMaterialPanel({content}:{content:ContentItem}){
   </div>;
 
   return <div className="content-reader"><div className="reader-meta"><span>{content.source}</span><span>{content.topic}</span></div>
-    {content.content_type==="listen"&&<div className="listening-sample"><Headphones size={20}/><div><strong>Listen to the example</strong><small>Computer voice · tap to replay, then try saying it yourself.</small></div><button className="btn btn-soft" type="button" onClick={playListening}><Volume2 size={16}/>{speaking?"Replay":"Play audio"}</button></div>}
-    {speechError&&<p role="status" className="material-error">{speechError}</p>}
+    {content.content_type==="listen"&&<div className="listening-sample"><Headphones size={20}/><div><strong>Listen to the example</strong><small>Listen first, then try saying it yourself.</small></div>{content.content_url?<audio controls preload="none" src={content.content_url} aria-label={`Listening example: ${content.title}`}/>:<span className="material-error">Audio is being prepared. Read the transcript below.</span>}</div>}
     {content.content_type==="listen"?<details className="listening-transcript"><summary>Show transcript and reading material</summary><p>{content.content_body}</p></details>:<p>{content.content_body}</p>}
   </div>;
 }
