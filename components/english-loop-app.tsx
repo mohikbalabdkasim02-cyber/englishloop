@@ -43,6 +43,8 @@ import { getSupabase } from "@/lib/supabase";
 import StudentCreateModal from "@/components/student-create-modal";
 import { PinChangeCard, StudentPinResetModal } from "@/components/pin-security";
 import StudentTaskStrip from "@/components/student-task-strip";
+import LearningMaterialPanel from "@/components/learning-material-panel";
+import { SPEAKING_RUBRIC, RUBRIC_NAME, rubricOverall, rubricPerformanceLabel } from "@/lib/speaking-rubric";
 import {
   demoActivities,
   demoContents,
@@ -95,6 +97,9 @@ type FeedbackRow = {
   vocabulary: number;
   pronunciation: number;
   confidence: number;
+  task_fulfilment?: number | null;
+  grammar?: number | null;
+  overall_score?: number | null;
   positive_feedback: string;
   improvement_feedback: string;
 };
@@ -413,10 +418,7 @@ function ActivityExperience({
         {step === 0 && <div className="activity-panel">
           <div className={classNames("content-hero", meta.className)}><Icon size={25} /><span>{meta.label} · {content.format}</span><div className="content-duration"><Clock3 size={14} /> {content.duration_minutes} min</div></div>
           <div className="activity-heading"><div className="eyebrow">INPUT</div><h1>{content.title}</h1><p>{content.description}</p></div>
-          <div className="content-reader">
-            <div className="reader-meta"><span>{content.source}</span><span>{content.topic}</span></div>
-            <p>{content.content_body}</p>
-          </div>
+          <LearningMaterialPanel content={content} />
           <div className="notice"><Sparkles size={17} /><span><strong>Before you continue:</strong> focus on the main idea first. You do not need to understand every word.</span></div>
           <button className="btn btn-primary btn-lg activity-next" onClick={() => setStep(1)}>I’m ready to check my understanding <ArrowRight size={18} /></button>
         </div>}
@@ -642,7 +644,8 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   const [builderOpen, setBuilderOpen] = useState(false);
   const [studentCreatorOpen, setStudentCreatorOpen] = useState(false);
   const [pinStudent, setPinStudent] = useState<any | null>(null);
-  const [builder, setBuilder] = useState({ title:"", type:"read", level:"A2", topic:"", duration:"4", body:"", prompt:"", min:"45", max:"90", classId:"", deadline:"" });
+  const [builder, setBuilder] = useState({ title:"", type:"read", level:"A2", topic:"", duration:"4", body:"", prompt:"", min:"45", max:"90", classId:"", deadline:"", materialType:"text", youtubeUrl:"" });
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [builderBusy, setBuilderBusy] = useState(false);
 
   const loadTeacher = useCallback(async()=>{
@@ -692,34 +695,106 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
 
   async function createActivity(e:React.FormEvent){
     e.preventDefault();
+    if(builder.materialType==="youtube" && !builder.youtubeUrl.trim()){window.alert("Paste a YouTube link first.");return;}
+    if(builder.materialType==="pdf" && !pdfFile){window.alert("Choose a PDF file first.");return;}
+    if(pdfFile && (pdfFile.type!=="application/pdf" || pdfFile.size>25*1024*1024)){window.alert("PDF must be a PDF file no larger than 25 MB.");return;}
+
+    const resetBuilder=()=>{
+      setBuilder({title:"",type:"read",level:"A2",topic:"",duration:"4",body:"",prompt:"",min:"45",max:"90",classId:"",deadline:"",materialType:"text",youtubeUrl:""});
+      setPdfFile(null);
+    };
+
     if(isDemo){
-      const contentId=`demo-content-${Date.now()}`; const activityId=`demo-act-${Date.now()}`;
-      setContents((old:any[])=>[{id:contentId,title:builder.title,description:`Teacher-created ${builder.type} content`,content_type:builder.type,format:builder.type==="read"?"Article":builder.type==="watch"?"Short video":"Mini podcast",cefr_level:builder.level,topic:builder.topic,duration_minutes:Number(builder.duration),content_body:builder.body,vocabulary_focus:[]},...old]);
+      const contentId=`demo-content-${Date.now()}`, activityId=`demo-act-${Date.now()}`;
+      const demoPdfUrl=builder.materialType==="pdf"&&pdfFile?URL.createObjectURL(pdfFile):null;
+      setContents((old:any[])=>[{
+        id:contentId,title:builder.title,description:`Teacher-created ${builder.type} content`,
+        content_type:builder.type,
+        format:builder.materialType==="youtube"?"YouTube":builder.materialType==="pdf"?"PDF":builder.type==="read"?"Article":builder.type==="watch"?"Short video":"Mini podcast",
+        cefr_level:builder.level,topic:builder.topic,duration_minutes:Number(builder.duration),
+        content_body:builder.body,content_url:builder.materialType==="youtube"?builder.youtubeUrl:demoPdfUrl,
+        material_type:builder.materialType,storage_path:null,source:"Teacher material",vocabulary_focus:[]
+      },...old]);
       setActivities((old:any[])=>[{id:activityId,content_id:contentId,title:builder.title,speaking_prompt:builder.prompt,instructions:"Consume the input, capture the main idea, then speak in your own words.",min_duration_seconds:Number(builder.min),max_duration_seconds:Number(builder.max)},...old]);
-      if(builder.classId) setAssignments((old:any[])=>[{id:`demo-assignment-${Date.now()}`,activity_id:activityId,class_id:builder.classId,deadline:builder.deadline?new Date(`${builder.deadline}T23:59:59`).toISOString():null},...old]);
-      setBuilder({ title:"", type:"read", level:"A2", topic:"", duration:"4", body:"", prompt:"", min:"45", max:"90", classId:"", deadline:"" });
-      setBuilderOpen(false); return;
+      if(builder.classId)setAssignments((old:any[])=>[{id:`demo-assignment-${Date.now()}`,activity_id:activityId,class_id:builder.classId,deadline:builder.deadline?new Date(`${builder.deadline}T23:59:59`).toISOString():null},...old]);
+      resetBuilder();setBuilderOpen(false);return;
     }
-    const supabase=getSupabase(); if(!supabase) return;
+
+    const supabase=getSupabase();if(!supabase)return;
     setBuilderBusy(true);
-    const {data:content,error:contentError}=await supabase.from("contents").insert({title:builder.title,description:`${builder.topic} · ${builder.level}`,content_type:builder.type,format:builder.type==="read"?"article":builder.type==="watch"?"short video":"mini podcast",cefr_level:builder.level,topic:builder.topic,duration_minutes:Number(builder.duration),content_body:builder.body||null,vocabulary_focus:[],is_published:true,created_by:profile.id}).select("id").single();
-    if(contentError||!content){setBuilderBusy(false);window.alert(contentError?.message||"Could not create content");return;}
-    const {data:activity,error:activityError}=await supabase.from("activities").insert({content_id:content.id,title:builder.title,instructions:"Consume the input, capture the main idea, then speak in your own words.",speaking_prompt:builder.prompt,min_duration_seconds:Number(builder.min),max_duration_seconds:Number(builder.max),created_by:profile.id,is_published:true}).select("id").single();
-    if(activityError||!activity){setBuilderBusy(false);window.alert(activityError?.message||"Could not create activity");return;}
+    let storagePath:string|null=null;
+
+    if(builder.materialType==="pdf"&&pdfFile){
+      const safeName=pdfFile.name.toLowerCase().replace(/[^a-z0-9._-]+/g,"-");
+      storagePath=`materials/${Date.now()}-${safeName}`;
+      const {error:uploadError}=await supabase.storage.from("learning-materials").upload(storagePath,pdfFile,{contentType:"application/pdf",upsert:false});
+      if(uploadError){setBuilderBusy(false);window.alert(uploadError.message);return;}
+    }
+
+    const {data:content,error:contentError}=await supabase.from("contents").insert({
+      title:builder.title,
+      description:`${builder.topic} · ${builder.level}`,
+      content_type:builder.type,
+      format:builder.materialType==="youtube"?"YouTube":builder.materialType==="pdf"?"PDF":builder.type==="read"?"article":builder.type==="watch"?"short video":"mini podcast",
+      cefr_level:builder.level,
+      topic:builder.topic,
+      duration_minutes:Number(builder.duration),
+      content_body:builder.body||null,
+      content_url:builder.materialType==="youtube"?builder.youtubeUrl.trim():null,
+      material_type:builder.materialType,
+      storage_path:storagePath,
+      source:builder.materialType==="youtube"?"YouTube":builder.materialType==="pdf"?"Uploaded PDF":"English Loop",
+      vocabulary_focus:[],
+      is_published:true,
+      created_by:profile.id
+    }).select("id").single();
+
+    if(contentError||!content){
+      if(storagePath)await supabase.storage.from("learning-materials").remove([storagePath]);
+      setBuilderBusy(false);window.alert(contentError?.message||"Could not create content");return;
+    }
+
+    const {data:activity,error:activityError}=await supabase.from("activities").insert({
+      content_id:content.id,title:builder.title,
+      instructions:"Consume the input, capture the main idea, then speak in your own words.",
+      speaking_prompt:builder.prompt,
+      min_duration_seconds:Number(builder.min),
+      max_duration_seconds:Number(builder.max),
+      created_by:profile.id,is_published:true
+    }).select("id").single();
+
+    if(activityError||!activity){
+      await supabase.from("contents").delete().eq("id",content.id);
+      if(storagePath)await supabase.storage.from("learning-materials").remove([storagePath]);
+      setBuilderBusy(false);window.alert(activityError?.message||"Could not create activity");return;
+    }
+
     await supabase.from("activity_questions").insert([
       {activity_id:activity.id,kind:"short_answer",prompt:"What is the main idea?",sort_order:1},
       {activity_id:activity.id,kind:"vocabulary",prompt:"Write three useful words from this content.",sort_order:2},
       {activity_id:activity.id,kind:"reflection",prompt:"What did you find interesting?",sort_order:3},
     ]);
-    if(builder.classId) await supabase.from("assignments").insert({activity_id:activity.id,class_id:builder.classId,created_by:profile.id,deadline:builder.deadline?new Date(`${builder.deadline}T23:59:59`).toISOString():null});
-    setBuilder({ title:"", type:"read", level:"A2", topic:"", duration:"4", body:"", prompt:"", min:"45", max:"90", classId:"", deadline:"" });
-    setBuilderBusy(false); setBuilderOpen(false); await loadTeacher();
+    if(builder.classId)await supabase.from("assignments").insert({activity_id:activity.id,class_id:builder.classId,created_by:profile.id,deadline:builder.deadline?new Date(`${builder.deadline}T23:59:59`).toISOString():null});
+    resetBuilder();setBuilderBusy(false);setBuilderOpen(false);await loadTeacher();
   }
 
   async function deleteContent(id:string){
-    if(!window.confirm("Delete this content and its linked activity?")) return;
+    if(!window.confirm("Delete this content and its linked activity?"))return;
+    const item=contents.find((x:any)=>x.id===id);
     if(isDemo){setContents((old:any[])=>old.filter((x:any)=>x.id!==id));setActivities((old:any[])=>old.filter((x:any)=>x.content_id!==id));return;}
-    const supabase=getSupabase(); if(!supabase) return; await supabase.from("contents").delete().eq("id",id); await loadTeacher();
+    const supabase=getSupabase();if(!supabase)return;
+    if(item?.storage_path)await supabase.storage.from("learning-materials").remove([item.storage_path]);
+    await supabase.from("contents").delete().eq("id",id);
+    await loadTeacher();
+  }
+
+  async function deleteStudent(student:any){
+    if(!window.confirm(`Remove ${student.name} from English Loop? This also removes their submissions and account data.`))return;
+    if(isDemo){setStudents((old:any[])=>old.filter((x:any)=>x.id!==student.id));return;}
+    const supabase=getSupabase();if(!supabase)return;
+    const {data,error}=await supabase.functions.invoke("admin-create-student",{body:{action:"delete_student",student_id:student.id}});
+    if(error||!data?.ok){window.alert(data?.error||error?.message||"Could not remove student.");return;}
+    await loadTeacher();
   }
 
   const navItems:[TeacherView,string,typeof Home][]=[
@@ -729,7 +804,7 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   return <div className="teacher-app">
     <aside className={classNames("teacher-sidebar",mobileMenu&&"open")}>
       <div className="teacher-brand-row"><Brand/><button className="icon-btn sidebar-close" onClick={()=>setMobileMenu(false)}><X size={18}/></button></div>
-      <div className="teacher-school"><div className="school-icon"><GraduationCap size={20}/></div><div><strong>English Loop Class</strong><span>Learning workspace</span></div></div>
+      <div className="teacher-school"><div className="school-icon"><GraduationCap size={20}/></div><div><strong>English Loop Admin</strong><span>Teacher & system management</span></div></div>
       <nav className="teacher-nav">{navItems.map(([key,label,Icon])=><button key={key} className={classNames(view===key&&"active")} onClick={()=>{setView(key);setMobileMenu(false)}}><Icon size={18}/><span>{label}</span>{key==="submissions"&&pending>0&&<b>{pending}</b>}</button>)}</nav>
       <div className="teacher-sidebar-foot"><div className="teacher-profile"><div className="small-avatar">{profile.name.charAt(0)}</div><div><strong>{profile.name}</strong><span>{isDemo?"Teacher Demo":"Teacher"}</span></div></div><button className="icon-btn" onClick={onLogout}><LogOut size={18}/></button></div>
     </aside>
@@ -743,12 +818,16 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
           <div className="teacher-page-head"><div><div className="eyebrow">STUDENTS</div><h1>Know the learner behind the score.</h1><p>Create accounts, watch practice, and help students recover access without leaving English Loop.</p></div><button className="btn btn-primary" onClick={()=>setStudentCreatorOpen(true)}><Plus size={17}/> Add student</button></div>
           <div className="student-table-card">
             <div className="student-table-head"><span>Student</span><span>Level</span><span>Class</span><span>Activities</span><span>Speaking</span><span>Streak</span><span>Access</span></div>
-            {students.map((s:any)=>{const className=isDemo?s.class_name:classes.find((c:any)=>c.id===s.class_id)?.name||"—"; const studentResponses=isDemo?s.completed:responses.filter((r:any)=>r.student_id===s.id&&r.status==="submitted").length; const studentSpeak=isDemo?s.speakingMinutes:speaking.filter((sp:any)=>responseMap[sp.response_id]?.student_id===s.id).reduce((sum:number,sp:any)=>sum+sp.duration_seconds,0)/60; return <div className="student-table-row" key={s.id}><span><b className="table-avatar">{s.name.charAt(0)}</b><div><strong>{s.name}</strong><small>@{s.username||"student"}</small></div></span><span><b className="level-badge">{s.cefr_level}</b></span><span>{className}</span><span>{studentResponses}</span><span>{Number(studentSpeak).toFixed(1)} min</span><span className="streak-cell"><Flame size={15}/>{isDemo?s.streak:Math.min(studentResponses,7)} days</span><button className="student-reset-btn" onClick={()=>setPinStudent(s)}>Reset PIN</button></div>})}
+            {students.map((s:any)=>{const className=isDemo?s.class_name:classes.find((c:any)=>c.id===s.class_id)?.name||"—"; const studentResponses=isDemo?s.completed:responses.filter((r:any)=>r.student_id===s.id&&r.status==="submitted").length; const studentSpeak=isDemo?s.speakingMinutes:speaking.filter((sp:any)=>responseMap[sp.response_id]?.student_id===s.id).reduce((sum:number,sp:any)=>sum+sp.duration_seconds,0)/60; return <div className="student-table-row" key={s.id}><span><b className="table-avatar">{s.name.charAt(0)}</b><div><strong>{s.name}</strong><small>@{s.username||"student"}</small></div></span><span><b className="level-badge">{s.cefr_level}</b></span><span>{className}</span><span>{studentResponses}</span><span>{Number(studentSpeak).toFixed(1)} min</span><span className="streak-cell"><Flame size={15}/>{isDemo?s.streak:Math.min(studentResponses,7)} days</span><div className="student-access-actions"><button className="student-reset-btn" onClick={()=>setPinStudent(s)}>Reset PIN</button><button className="student-delete-btn" title="Remove student" onClick={()=>deleteStudent(s)}><Trash2 size={14}/></button></div></div>})}
             {!students.length&&<div className="empty-table">No students yet. Use <strong>Add student</strong> to create the first learner account.</div>}
           </div>
         </div>}
 
-        {view==="content"&&<div className="teacher-page"><div className="teacher-page-head"><div><div className="eyebrow">CONTENT</div><h1>Your input library.</h1><p>Every input should give students something worth saying.</p></div><button className="btn btn-primary" onClick={()=>setBuilderOpen(true)}><Plus size={17}/> Add content</button></div><div className="teacher-content-grid">{contents.map((c:any)=>{const meta=typeMeta[c.content_type as keyof typeof typeMeta]||typeMeta.read;const Icon=meta.icon;return <article className="teacher-content-card" key={c.id}><div className={classNames("teacher-content-icon",meta.className)}><Icon size={21}/></div><div><div className="content-tags"><span>{c.cefr_level}</span><span>{c.duration_minutes} min</span></div><h3>{c.title}</h3><p>{c.topic}</p></div><button className="icon-btn danger" onClick={()=>deleteContent(c.id)}><Trash2 size={16}/></button></article>})}</div></div>}
+        {view==="content"&&<div className="teacher-page">
+          <div className="teacher-page-head"><div><div className="eyebrow">CONTENT MANAGEMENT</div><h1>Manage every learning input.</h1><p>Text, private PDF materials, and YouTube links all live in one library.</p></div><button className="btn btn-primary" onClick={()=>setBuilderOpen(true)}><Plus size={17}/> Add material</button></div>
+          <div className="content-admin-summary"><div><strong>{contents.length}</strong><span>Total materials</span></div><div><strong>{contents.filter((c:any)=>c.material_type==="youtube").length}</strong><span>YouTube</span></div><div><strong>{contents.filter((c:any)=>c.material_type==="pdf").length}</strong><span>PDF</span></div><div><strong>{contents.filter((c:any)=>(c.material_type||"text")==="text").length}</strong><span>Text</span></div></div>
+          <div className="teacher-content-grid">{contents.map((c:any)=>{const meta=typeMeta[c.content_type as keyof typeof typeMeta]||typeMeta.read;const Icon=meta.icon;const material=(c.material_type||"text").toUpperCase();return <article className="teacher-content-card" key={c.id}><div className={classNames("teacher-content-icon",meta.className)}><Icon size={21}/></div><div><div className="content-tags"><span>{c.cefr_level}</span><span>{material}</span><span>{c.duration_minutes||0} min</span></div><h3>{c.title}</h3><p>{c.topic} · {c.source||"English Loop"}</p>{c.material_type==="youtube"&&c.content_url&&<a className="material-mini-link" href={c.content_url} target="_blank" rel="noreferrer">Open YouTube <ArrowRight size={12}/></a>}{c.material_type==="pdf"&&<span className="material-mini-note">Private PDF · signed student access</span>}</div><button className="icon-btn danger" onClick={()=>deleteContent(c.id)}><Trash2 size={16}/></button></article>})}</div>
+        </div>}
 
         {view==="activities"&&<div className="teacher-page">
           <div className="teacher-page-head"><div><div className="eyebrow">ACTIVITY BUILDER</div><h1>Pair every input with an output.</h1><p>Publish a challenge, assign it to a class, and give students a clear deadline.</p></div><button className="btn btn-primary" onClick={()=>setBuilderOpen(true)}><Plus size={17}/> Build activity</button></div>
@@ -759,11 +838,32 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
 
         {view==="progress"&&<div className="teacher-page"><div className="teacher-page-head"><div><div className="eyebrow">CLASS PROGRESS</div><h1>Is the class using English?</h1><p>The main metric is weekly speaking practice — not login count.</p></div></div><div className="metric-hero"><div><small>MAIN PRODUCT METRIC</small><h2>Weekly Speaking Practice</h2><p>How much active English expression is happening across the class?</p></div><div><strong>{isDemo?"54.4":(speaking.reduce((n:number,s:any)=>n+s.duration_seconds,0)/60).toFixed(1)}</strong><span>total minutes</span></div></div><div className="progress-bars-card"><div className="panel-title"><div><h3>Speaking practice by student</h3><p>Minutes submitted in English Loop.</p></div></div>{students.slice(0,8).map((s:any)=>{const mins=isDemo?s.speakingMinutes:speaking.filter((sp:any)=>responseMap[sp.response_id]?.student_id===s.id).reduce((sum:number,sp:any)=>sum+sp.duration_seconds,0)/60;const max=isDemo?20:Math.max(10,...students.map((st:any)=>speaking.filter((sp:any)=>responseMap[sp.response_id]?.student_id===st.id).reduce((sum:number,sp:any)=>sum+sp.duration_seconds,0)/60));return <div className="student-progress-row" key={s.id}><span>{s.name}</span><i><b style={{width:`${Math.min(100,(mins/max)*100)}%`}}/></i><strong>{Number(mins).toFixed(1)}m</strong></div>})}</div></div>}
 
-        {view==="settings"&&<div className="teacher-page"><div className="teacher-page-head"><div><div className="eyebrow">SETTINGS</div><h1>English Loop workspace.</h1><p>Product status and learning principles.</p></div></div><div className="settings-grid"><section className="settings-card"><div className="settings-icon"><CheckCircle2 size={20}/></div><div><strong>Learning philosophy</strong><p>Speak first. Improve continuously. Feedback should make the next attempt easier, not make students afraid of mistakes.</p></div></section><section className="settings-card"><div className="settings-icon"><Mic size={20}/></div><div><strong>Private speaking storage</strong><p>Student audio is stored in a private Supabase bucket and protected with row-level access policies.</p></div></section><section className="settings-card"><div className="settings-icon"><BarChart3 size={20}/></div><div><strong>Primary metric</strong><p>Weekly Speaking Practice: how much students actively use English, not merely how often they open the app.</p></div></section></div></div>}
+        {view==="settings"&&<div className="teacher-page">
+          <div className="teacher-page-head"><div><div className="eyebrow">SYSTEM MANAGEMENT</div><h1>English Loop portfolio workspace.</h1><p>Everything needed for a realistic classroom trial, without automated scoring.</p></div></div>
+          <div className="settings-grid">
+            <section className="settings-card"><div className="settings-icon"><Library size={20}/></div><div><strong>Material management</strong><p>Admin can publish text, YouTube links, or private PDF learning materials and pair them with speaking tasks.</p></div></section>
+            <section className="settings-card"><div className="settings-icon"><Users size={20}/></div><div><strong>Student management</strong><p>Create students, reset PIN access, assign classes, and remove trial accounts from the same workspace.</p></div></section>
+            <section className="settings-card"><div className="settings-icon"><Mic size={20}/></div><div><strong>Manual listening & assessment</strong><p>Student recordings stay private. The teacher listens first, then scores the rubric manually. No AI auto-grading is used.</p></div></section>
+            <section className="settings-card rubric-settings-card"><div className="settings-icon"><ListChecks size={20}/></div><div><strong>{RUBRIC_NAME}</strong><p>Five equally weighted classroom criteria: Task Fulfilment, Fluency & Coherence, Grammar, Vocabulary, and Pronunciation/Intelligibility. The 0–100 score is a classroom summary, not a certified CEFR level.</p></div></section>
+          </div>
+        </div>}
       </>}
     </main>
 
-    {builderOpen&&<div className="modal-backdrop" onMouseDown={()=>setBuilderOpen(false)}><div className="builder-modal" onMouseDown={(e)=>e.stopPropagation()}><div className="builder-head"><div><div className="eyebrow">ACTIVITY BUILDER</div><h2>Turn input into output.</h2></div><button className="icon-btn" onClick={()=>setBuilderOpen(false)}><X size={18}/></button></div><form className="builder-form" onSubmit={createActivity}><div className="form-grid two"><label><span>Activity title</span><input required value={builder.title} onChange={(e)=>setBuilder({...builder,title:e.target.value})} placeholder="Anime Reflection #01"/></label><label><span>Topic</span><input required value={builder.topic} onChange={(e)=>setBuilder({...builder,topic:e.target.value})} placeholder="Friendship"/></label></div><div className="form-grid three"><label><span>Input type</span><select value={builder.type} onChange={(e)=>setBuilder({...builder,type:e.target.value})}><option value="read">Read</option><option value="watch">Watch</option><option value="listen">Listen</option></select></label><label><span>CEFR level</span><select value={builder.level} onChange={(e)=>setBuilder({...builder,level:e.target.value})}><option>A1</option><option>A2</option><option>B1</option><option>B2</option></select></label><label><span>Duration</span><input type="number" min="1" value={builder.duration} onChange={(e)=>setBuilder({...builder,duration:e.target.value})}/></label></div><label><span>Input text / transcript <em>optional</em></span><textarea rows={4} value={builder.body} onChange={(e)=>setBuilder({...builder,body:e.target.value})} placeholder="Paste an original short text, transcript, or content notes…"/></label><label><span>Speaking prompt</span><textarea required rows={3} value={builder.prompt} onChange={(e)=>setBuilder({...builder,prompt:e.target.value})} placeholder="Tell us what happened and which part you found most interesting."/></label><div className="form-grid two"><label><span>Min seconds</span><input type="number" min="15" value={builder.min} onChange={(e)=>setBuilder({...builder,min:e.target.value})}/></label><label><span>Max seconds</span><input type="number" min="30" value={builder.max} onChange={(e)=>setBuilder({...builder,max:e.target.value})}/></label></div><div className="form-grid two"><label><span>Assign to class</span><select value={builder.classId} onChange={(e)=>setBuilder({...builder,classId:e.target.value})}><option value="">Open practice</option>{classes.map((c:any)=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label><span>Deadline <em>optional</em></span><input type="date" value={builder.deadline} onChange={(e)=>setBuilder({...builder,deadline:e.target.value})}/></label></div><div className="builder-actions"><button type="button" className="btn btn-soft" onClick={()=>setBuilderOpen(false)}>Cancel</button><button className="btn btn-primary" disabled={builderBusy}>{builderBusy?<Loader2 className="spin" size={17}/>:<Plus size={17}/>} Publish activity</button></div></form></div></div>}
+    {builderOpen&&<div className="modal-backdrop" onMouseDown={()=>setBuilderOpen(false)}><div className="builder-modal" onMouseDown={(e)=>e.stopPropagation()}>
+      <div className="builder-head"><div><div className="eyebrow">MATERIAL + ACTIVITY BUILDER</div><h2>Create the full learning loop.</h2></div><button className="icon-btn" onClick={()=>setBuilderOpen(false)}><X size={18}/></button></div>
+      <form className="builder-form" onSubmit={createActivity}>
+        <div className="form-grid two"><label><span>Activity / material title</span><input required value={builder.title} onChange={(e)=>setBuilder({...builder,title:e.target.value})} placeholder="Exercise Reflection"/></label><label><span>Topic</span><input required value={builder.topic} onChange={(e)=>setBuilder({...builder,topic:e.target.value})} placeholder="Health & Lifestyle"/></label></div>
+        <div className="form-grid three"><label><span>Input mode</span><select value={builder.type} onChange={(e)=>setBuilder({...builder,type:e.target.value})}><option value="read">Read</option><option value="watch">Watch</option><option value="listen">Listen</option></select></label><label><span>Material source</span><select value={builder.materialType} onChange={(e)=>{setBuilder({...builder,materialType:e.target.value});setPdfFile(null)}}><option value="text">Text / transcript</option><option value="youtube">YouTube link</option><option value="pdf">Upload PDF</option></select></label><label><span>CEFR target</span><select value={builder.level} onChange={(e)=>setBuilder({...builder,level:e.target.value})}><option>A1</option><option>A2</option><option>B1</option><option>B2</option></select></label></div>
+        {builder.materialType==="youtube"&&<label><span>YouTube URL</span><input required type="url" value={builder.youtubeUrl} onChange={(e)=>setBuilder({...builder,youtubeUrl:e.target.value})} placeholder="https://www.youtube.com/watch?v=..."/></label>}
+        {builder.materialType==="pdf"&&<label className="file-field"><span>PDF material <em>max 25 MB</em></span><input required type="file" accept="application/pdf,.pdf" onChange={(e)=>setPdfFile(e.target.files?.[0]||null)}/>{pdfFile&&<small>{pdfFile.name} · {(pdfFile.size/1024/1024).toFixed(1)} MB</small>}</label>}
+        <div className="form-grid two"><label><span>Estimated minutes</span><input type="number" min="1" value={builder.duration} onChange={(e)=>setBuilder({...builder,duration:e.target.value})}/></label><label><span>Speaking target</span><div className="inline-number-fields"><input type="number" min="15" value={builder.min} onChange={(e)=>setBuilder({...builder,min:e.target.value})}/><span>to</span><input type="number" min="30" value={builder.max} onChange={(e)=>setBuilder({...builder,max:e.target.value})}/><span>sec</span></div></label></div>
+        <label><span>Teacher notes / transcript <em>optional</em></span><textarea rows={4} value={builder.body} onChange={(e)=>setBuilder({...builder,body:e.target.value})} placeholder="Paste a transcript, reading text, or guidance for students…"/></label>
+        <label><span>Speaking prompt</span><textarea required rows={3} value={builder.prompt} onChange={(e)=>setBuilder({...builder,prompt:e.target.value})} placeholder="Summarize the material in your own words and give your opinion."/></label>
+        <div className="form-grid two"><label><span>Assign to class</span><select value={builder.classId} onChange={(e)=>setBuilder({...builder,classId:e.target.value})}><option value="">Open practice</option>{classes.map((c:any)=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label><span>Deadline <em>optional</em></span><input type="date" value={builder.deadline} onChange={(e)=>setBuilder({...builder,deadline:e.target.value})}/></label></div>
+        <div className="builder-actions"><button type="button" className="btn btn-soft" onClick={()=>setBuilderOpen(false)}>Cancel</button><button className="btn btn-primary" disabled={builderBusy}>{builderBusy?<Loader2 className="spin" size={17}/>:<Plus size={17}/>} Publish material & activity</button></div>
+      </form>
+    </div></div>}
 
     {studentCreatorOpen&&<StudentCreateModal
       classes={classes.map((item:any)=>({id:item.id,name:item.name}))}
@@ -785,12 +885,30 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
 }
 
 function FeedbackDrawer({submission,audioUrl,isDemo,teacherId,existing,onClose,onSaved}:{submission:any;audioUrl:string|null;isDemo:boolean;teacherId:string;existing:any;onClose:()=>void;onSaved:(row:any)=>Promise<void>}){
-  const [scores,setScores]=useState<Record<string,number>>({comprehension:existing?.comprehension||4,fluency:existing?.fluency||3,vocabulary:existing?.vocabulary||3,pronunciation:existing?.pronunciation||3,confidence:existing?.confidence||4});
+  const [scores,setScores]=useState<Record<string,number>>({task_fulfilment:existing?.task_fulfilment||existing?.comprehension||4,fluency:existing?.fluency||3,grammar:existing?.grammar||existing?.confidence||3,vocabulary:existing?.vocabulary||3,pronunciation:existing?.pronunciation||3});
   const [positive,setPositive]=useState(existing?.positive_feedback||"");
   const [improve,setImprove]=useState(existing?.improvement_feedback||"");
   const [busy,setBusy]=useState(false);
-  async function save(){if(!positive.trim()||!improve.trim())return;setBusy(true);const payload={speaking_id:submission.id,...scores,positive_feedback:positive,improvement_feedback:improve,teacher_id:teacherId};if(!isDemo){const supabase=getSupabase();if(supabase){const {error}=await supabase.from("feedback").upsert(payload,{onConflict:"speaking_id"});if(error){setBusy(false);window.alert(error.message);return;}}}await onSaved(payload);setBusy(false)}
-  return <div className="drawer-backdrop"><aside className="feedback-drawer"><div className="drawer-head"><div><div className="eyebrow">SPEAKING SUBMISSION</div><h2>{submission.student}</h2><p>{submission.activity} · {formatDuration(submission.duration_seconds)}</p></div><button className="icon-btn" onClick={onClose}><X size={19}/></button></div><div className="drawer-scroll"><section className="listen-card"><div><div className="listen-icon"><Volume2 size={22}/></div><div><strong>Listen to speaking</strong><span>{isDemo?"Demo mode · sample metadata":"Private audio · signed access"}</span></div></div>{audioUrl?<audio controls src={audioUrl}/>:isDemo?<div className="demo-audio"><Play size={16}/><span>Audio playback appears here for real submissions</span></div>:<div className="demo-audio"><Loader2 className="spin" size={16}/><span>Preparing private audio…</span></div>}</section><section className="assessment"><h3>Simple assessment</h3><p>Score what helps the next attempt. 1 = needs support, 5 = very strong.</p>{Object.entries(scores).map(([key,value])=><div className="score-row" key={key}><span>{key[0].toUpperCase()+key.slice(1)}</span><div>{[1,2,3,4,5].map((n)=><button key={n} className={value===n?"selected":""} onClick={()=>setScores({...scores,[key]:n})}>{n}</button>)}</div></div>)}</section><section className="feedback-writing"><label><span>What you did well</span><textarea value={positive} onChange={(e)=>setPositive(e.target.value)} placeholder="You explained the main idea clearly and kept speaking even when you needed time to think."/></label><label><span>Try this next</span><textarea value={improve} onChange={(e)=>setImprove(e.target.value)} placeholder="Try connecting your ideas with because, then, and however."/></label></section></div><div className="drawer-actions"><button className="btn btn-soft" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={busy||!positive.trim()||!improve.trim()} onClick={save}>{busy?<Loader2 className="spin" size={17}/>:<Send size={17}/>} Save feedback</button></div></aside></div>
+  const overall=rubricOverall(scores), performance=rubricPerformanceLabel(overall);
+
+  async function save(){
+    if(!positive.trim()||!improve.trim())return;
+    setBusy(true);
+    const payload={speaking_id:submission.id,task_fulfilment:scores.task_fulfilment,fluency:scores.fluency,grammar:scores.grammar,vocabulary:scores.vocabulary,pronunciation:scores.pronunciation,overall_score:overall,rubric_name:RUBRIC_NAME,rubric_snapshot:SPEAKING_RUBRIC,comprehension:scores.task_fulfilment,confidence:scores.grammar,positive_feedback:positive,improvement_feedback:improve,teacher_id:teacherId};
+    if(!isDemo){const supabase=getSupabase();if(supabase){const {error}=await supabase.from("feedback").upsert(payload,{onConflict:"speaking_id"});if(error){setBusy(false);window.alert(error.message);return;}}}
+    await onSaved(payload);setBusy(false);
+  }
+
+  return <div className="drawer-backdrop"><aside className="feedback-drawer">
+    <div className="drawer-head"><div><div className="eyebrow">MANUAL SPEAKING ASSESSMENT</div><h2>{submission.student}</h2><p>{submission.activity} · {formatDuration(submission.duration_seconds)}</p></div><button className="icon-btn" onClick={onClose}><X size={19}/></button></div>
+    <div className="drawer-scroll">
+      <section className="listen-card"><div><div className="listen-icon"><Volume2 size={22}/></div><div><strong>Listen before scoring</strong><span>{isDemo?"Demo mode · sample playback area":"Private audio · teacher-only signed access"}</span></div></div>{audioUrl?<audio controls src={audioUrl}/>:isDemo?<div className="demo-audio"><Play size={16}/><span>Real student audio plays here before you score it.</span></div>:<div className="demo-audio"><Loader2 className="spin" size={16}/><span>Preparing private audio…</span></div>}</section>
+      <section className="rubric-overview"><div><span>CLASSROOM SCORE</span><strong>{overall}</strong><small>/ 100 · {performance}</small></div><p>{RUBRIC_NAME}. Teacher judgement only; this is not an automated or certified CEFR result.</p></section>
+      <section className="assessment"><h3>Speaking rubric</h3><p>Choose 1–5 for each criterion after listening.</p>{SPEAKING_RUBRIC.map((criterion)=><div className="rubric-row" key={criterion.key}><div className="rubric-label"><strong>{criterion.label}</strong><span>{criterion.description}</span></div><div className="rubric-score-buttons">{[1,2,3,4,5].map((n)=><button key={n} className={scores[criterion.key]===n?"selected":""} onClick={()=>setScores({...scores,[criterion.key]:n})}>{n}</button>)}</div><p className="rubric-descriptor">{criterion.descriptors[scores[criterion.key] as 1|2|3|4|5]}</p></div>)}</section>
+      <section className="feedback-writing"><label><span>What the student did well</span><textarea value={positive} onChange={(e)=>setPositive(e.target.value)} placeholder="Point to one clear strength you heard."/></label><label><span>One next step</span><textarea value={improve} onChange={(e)=>setImprove(e.target.value)} placeholder="Give one concrete improvement for the next recording."/></label></section>
+    </div>
+    <div className="drawer-actions"><button className="btn btn-soft" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={busy||!positive.trim()||!improve.trim()} onClick={save}>{busy?<Loader2 className="spin" size={17}/>:<Send size={17}/>} Save manual score</button></div>
+  </aside></div>
 }
 
 export default function EnglishLoopApp() {
