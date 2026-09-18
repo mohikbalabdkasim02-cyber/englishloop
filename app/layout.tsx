@@ -2,11 +2,42 @@ import type { Metadata, Viewport } from "next";
 import PwaRegister from "@/components/pwa-register";
 import "./globals.css";
 
+const siteUrl = "https://englishloop-beta.vercel.app";
+
 export const metadata: Metadata = {
-  title: "English Loop — Watch. Listen. Read. Speak. Grow.",
-  description: "Input-Based & Output-Based English Learning Platform by Yusril Maulana.",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "English Loop — Watch. Listen. Read. Speak. Grow.",
+    template: "%s | English Loop",
+  },
+  description: "Input-Based & Output-Based English Learning Platform by Yusril Maulana. Explore authentic input, speak, receive teacher feedback, and track progress.",
   applicationName: "English Loop",
   manifest: "/manifest.webmanifest",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: siteUrl,
+    siteName: "English Loop",
+    title: "English Loop — Input → Output → Growth",
+    description: "Watch. Listen. Read. Speak. Grow. A teacher-guided English learning platform by Yusril Maulana.",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "English Loop — Input to Output English Learning",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "English Loop — Input → Output → Growth",
+    description: "Watch. Listen. Read. Speak. Grow. A teacher-guided English learning platform by Yusril Maulana.",
+    images: ["/opengraph-image"],
+  },
   icons: {
     icon: [
       { url: "/icons/icon.svg", type: "image/svg+xml" },

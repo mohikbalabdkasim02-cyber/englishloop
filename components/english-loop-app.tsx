@@ -826,6 +826,7 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   const [builderOpen, setBuilderOpen] = useState(false);
   const [studentCreatorOpen, setStudentCreatorOpen] = useState(false);
   const [pinStudent, setPinStudent] = useState<any | null>(null);
+  const [selectedStudentProfile, setSelectedStudentProfile] = useState<any | null>(null);
   const [builder, setBuilder] = useState({ title:"", type:"read", level:"A2", topic:"", duration:"4", body:"", prompt:"", min:"45", max:"90", classId:"", deadline:"", materialType:"text", youtubeUrl:"" });
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [builderBusy, setBuilderBusy] = useState(false);
@@ -1065,10 +1066,38 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
         {view==="dashboard"&&<div className="teacher-page"><div className="teacher-page-head"><div><div className="eyebrow">TEACHER DASHBOARD</div><h1>{greeting()}, {profile.name.split(" ")[0]}.</h1><p>See where students are in the loop and what needs your attention.</p></div><button className="btn btn-primary" onClick={()=>setBuilderOpen(true)}><Plus size={17}/> New activity</button></div><div className="teacher-stats"><div><span><Users size={18}/></span><strong>{students.length}</strong><small>Students</small></div><div><span><ListChecks size={18}/></span><strong>{activities.length}</strong><small>Activities</small></div><div><span><Mic size={18}/></span><strong>{speaking.length}</strong><small>Submissions</small></div><div className="attention"><span><MessageSquareText size={18}/></span><strong>{pending}</strong><small>Pending feedback</small></div></div><div className="teacher-grid"><section className="teacher-panel wide"><div className="panel-title"><div><h3>Recent speaking</h3><p>Latest student output waiting in the loop.</p></div><button className="text-btn" onClick={()=>setView("submissions")}>View all <ArrowRight size={15}/></button></div><div className="submission-table"><div className="table-head"><span>Student</span><span>Activity</span><span>Duration</span><span>Feedback</span><span/></div>{speaking.slice(0,5).map((row:any)=>{const meta=submissionMeta(row);return <button className="table-row" key={row.id} onClick={()=>openSubmission(row)}><span><b className="table-avatar">{meta.student.charAt(0)}</b>{meta.student}</span><span>{meta.activity}</span><span>{formatDuration(meta.duration_seconds)}</span><span className={meta.feedback?"status-done":"status-pending"}>{meta.feedback?"Done":"Pending"}</span><span><ChevronRight size={16}/></span></button>})}{!speaking.length&&<div className="empty-table">No speaking submissions yet.</div>}</div></section><section className="teacher-panel"><div className="panel-title"><div><h3>Loop health</h3><p>Simple signals, not noisy analytics.</p></div><BarChart3 size={20}/></div><div className="health-list"><div><span>Speaking completion</span><strong>{isDemo?"82%":speaking.length?"Active":"—"}</strong><i><b style={{width:isDemo?"82%":speaking.length?"64%":"0%"}}/></i></div><div><span>Feedback complete</span><strong>{speaking.length?`${Math.round(((speaking.length-pending)/speaking.length)*100)}%`:"—"}</strong><i><b style={{width:speaking.length?`${((speaking.length-pending)/speaking.length)*100}%`:"0%"}}/></i></div><div><span>Weekly practice</span><strong>{isDemo?"18 min":"Live"}</strong><i><b style={{width:isDemo?"74%":"48%"}}/></i></div></div></section></div></div>}
 
         {view==="students"&&<div className="teacher-page">
-          <div className="teacher-page-head"><div><div className="eyebrow">STUDENTS</div><h1>Know the learner behind the score.</h1><p>Create accounts, watch practice, and help students recover access without leaving English Loop.</p></div><button className="btn btn-primary" onClick={()=>setStudentCreatorOpen(true)}><Plus size={17}/> Add student</button></div>
+          <div className="teacher-page-head"><div><div className="eyebrow">STUDENTS</div><h1>Know the learner behind the score.</h1><p>Open each student profile to monitor scores, speaking practice, rubric development, feedback history, and submissions.</p></div><button className="btn btn-primary" onClick={()=>setStudentCreatorOpen(true)}><Plus size={17}/> Add student</button></div>
           <div className="student-table-card">
-            <div className="student-table-head"><span>Student</span><span>Level</span><span>Class</span><span>Activities</span><span>Speaking</span><span>Streak</span><span>Access</span></div>
-            {students.map((s:any)=>{const className=isDemo?s.class_name:classes.find((c:any)=>c.id===s.class_id)?.name||"—"; const studentResponses=isDemo?s.completed:responses.filter((r:any)=>r.student_id===s.id&&r.status==="submitted").length; const studentSpeak=isDemo?s.speakingMinutes:speaking.filter((sp:any)=>responseMap[sp.response_id]?.student_id===s.id).reduce((sum:number,sp:any)=>sum+sp.duration_seconds,0)/60; return <div className="student-table-row" key={s.id}><span><b className="table-avatar">{s.name.charAt(0)}</b><div><strong>{s.name}</strong><small>@{s.username||"student"}</small></div></span><span><b className="level-badge">{s.cefr_level}</b></span><span>{className}</span><span>{studentResponses}</span><span>{Number(studentSpeak).toFixed(1)} min</span><span className="streak-cell"><Flame size={15}/>{isDemo?s.streak:Math.min(studentResponses,7)} days</span><div className="student-access-actions"><button className="student-reset-btn" onClick={()=>setPinStudent(s)}>Reset PIN</button><button className="student-delete-btn" title="Remove student" onClick={()=>deleteStudent(s)}><Trash2 size={14}/></button></div></div>})}
+            <div className="student-table-head student-monitor-head"><span>Student</span><span>Level</span><span>Class</span><span>Activities</span><span>Speaking</span><span>Avg. score</span><span>Access</span></div>
+            {students.map((s:any)=>{
+              const className=isDemo?s.class_name:classes.find((c:any)=>c.id===s.class_id)?.name||"—";
+              const studentResponseRows=responses.filter((r:any)=>r.student_id===s.id&&r.status==="submitted");
+              const studentResponses=isDemo?s.completed:studentResponseRows.length;
+              const studentSpeakRows=speaking.filter((sp:any)=>responseMap[sp.response_id]?.student_id===s.id);
+              const studentSpeak=isDemo?s.speakingMinutes:studentSpeakRows.reduce((sum:number,sp:any)=>sum+sp.duration_seconds,0)/60;
+              const studentFeedback=studentSpeakRows.map((sp:any)=>feedback.find((f:any)=>f.speaking_id===sp.id)).filter(Boolean);
+              const avgScore=studentFeedback.length?Math.round(studentFeedback.reduce((sum:number,f:any)=>sum+(f.overall_score||0),0)/studentFeedback.length):null;
+              return <div
+                className="student-table-row student-monitor-row"
+                key={s.id}
+                role="button"
+                tabIndex={0}
+                onClick={()=>setSelectedStudentProfile(s)}
+                onKeyDown={(e)=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setSelectedStudentProfile(s)}}}
+              >
+                <span><b className="table-avatar">{s.name.charAt(0)}</b><div><strong>{s.name}</strong><small>@{s.username||"student"}</small></div></span>
+                <span><b className="level-badge">{s.cefr_level}</b></span>
+                <span>{className}</span>
+                <span>{studentResponses}</span>
+                <span>{Number(studentSpeak).toFixed(1)} min</span>
+                <span>{avgScore!==null?<b className="student-score-pill">{avgScore}</b>:<small className="muted-score">Not reviewed</small>}</span>
+                <div className="student-access-actions">
+                  <button className="student-profile-btn" onClick={(e)=>{e.stopPropagation();setSelectedStudentProfile(s)}}><BarChart3 size={13}/> Profile</button>
+                  <button className="student-reset-btn" onClick={(e)=>{e.stopPropagation();setPinStudent(s)}}>Reset PIN</button>
+                  <button className="student-delete-btn" title="Remove student" onClick={(e)=>{e.stopPropagation();deleteStudent(s)}}><Trash2 size={14}/></button>
+                </div>
+              </div>
+            })}
             {!students.length&&<div className="empty-table">No students yet. Use <strong>Add student</strong> to create the first learner account.</div>}
           </div>
         </div>}
@@ -1168,7 +1197,111 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
 
     {pinStudent&&<StudentPinResetModal student={pinStudent} isDemo={isDemo} onClose={()=>setPinStudent(null)} />}
 
+    {selectedStudentProfile&&<TeacherStudentProfile
+      student={selectedStudentProfile}
+      classes={classes}
+      responses={responses}
+      speaking={speaking}
+      feedback={feedback}
+      activities={activities}
+      responseMap={responseMap}
+      isDemo={isDemo}
+      onClose={()=>setSelectedStudentProfile(null)}
+      onOpenSubmission={(row:any)=>{setSelectedStudentProfile(null);openSubmission(row)}}
+    />}
+
     {selectedSpeaking&&<FeedbackDrawer submission={selectedSpeaking} audioUrl={audioUrl} isDemo={isDemo} teacherId={profile.id} existing={feedback.find((f:any)=>f.speaking_id===selectedSpeaking.id)} onClose={()=>{setSelectedSpeaking(null);setAudioUrl(null)}} onSaved={async(row)=>{if(isDemo){setFeedback((old:any[])=>[{...row,speaking_id:selectedSpeaking.id},...old.filter((f:any)=>f.speaking_id!==selectedSpeaking.id)]);setSpeaking((old:any[])=>old.map((s:any)=>s.id===selectedSpeaking.id?{...s,feedback:true}:s));}else await loadTeacher();setSelectedSpeaking(null)}}/>}
+  </div>
+}
+
+function TeacherStudentProfile({
+  student,classes,responses,speaking,feedback,activities,responseMap,isDemo,onClose,onOpenSubmission
+}:{
+  student:any;classes:any[];responses:any[];speaking:any[];feedback:any[];activities:any[];responseMap:Record<string,any>;isDemo:boolean;onClose:()=>void;onOpenSubmission:(row:any)=>void
+}){
+  const studentResponses=responses.filter((r:any)=>r.student_id===student.id&&r.status==="submitted");
+  const studentSpeaking=speaking.filter((sp:any)=>responseMap[sp.response_id]?.student_id===student.id);
+  const className=isDemo?student.class_name:classes.find((c:any)=>c.id===student.class_id)?.name||"No class";
+  const reviewed=studentSpeaking.map((sp:any)=>{
+    const response=responseMap[sp.response_id];
+    const review=feedback.find((f:any)=>f.speaking_id===sp.id);
+    const activity=activities.find((a:any)=>a.id===response?.activity_id);
+    return {speaking:sp,response,feedback:review,activity};
+  }).sort((a:any,b:any)=>new Date(b.response?.submitted_at||b.speaking.created_at||0).getTime()-new Date(a.response?.submitted_at||a.speaking.created_at||0).getTime());
+  const scored=reviewed.filter((item:any)=>item.feedback?.overall_score!=null);
+  const totalMinutes=studentSpeaking.reduce((sum:number,item:any)=>sum+item.duration_seconds,0)/60;
+  const avgScore=scored.length?Math.round(scored.reduce((sum:number,item:any)=>sum+item.feedback.overall_score,0)/scored.length):null;
+  const latestScore=scored[0]?.feedback?.overall_score??null;
+  const pending=reviewed.filter((item:any)=>!item.feedback).length;
+  const rubricKeys=[
+    ["Task Fulfilment","task_fulfilment","comprehension"],
+    ["Fluency","fluency",null],
+    ["Grammar","grammar","confidence"],
+    ["Vocabulary","vocabulary",null],
+    ["Pronunciation","pronunciation",null],
+  ] as Array<[string,string,string|null]>;
+  const rubricAverages=rubricKeys.map(([label,key,fallback])=>{
+    const vals=scored.map((item:any)=>item.feedback?.[key]??(fallback?item.feedback?.[fallback]:null)).filter((v:any)=>typeof v==="number");
+    return {label,value:vals.length?Math.round((vals.reduce((a:number,b:number)=>a+b,0)/vals.length)*10)/10:null};
+  });
+  const maxScore=Math.max(100,...scored.map((item:any)=>item.feedback?.overall_score||0));
+
+  return <div className="student-profile-backdrop" onMouseDown={onClose}>
+    <aside className="teacher-student-profile" onMouseDown={(e)=>e.stopPropagation()}>
+      <div className="student-profile-head">
+        <button className="icon-btn" onClick={onClose}><X size={18}/></button>
+        <div className="student-profile-identity"><div className="student-profile-avatar">{student.name?.charAt(0)||"S"}</div><div><span>STUDENT PROGRESS PROFILE</span><h2>{student.name}</h2><p>@{student.username||"student"} · {className} · {student.cefr_level}</p></div></div>
+      </div>
+      <div className="student-profile-scroll">
+        <section className="student-profile-kpis">
+          <div className="primary"><small>AVERAGE SCORE</small><strong>{avgScore!==null?avgScore:"—"}<span>{avgScore!==null?"/100":""}</span></strong><p>{avgScore!==null?rubricPerformanceLabel(avgScore):"No teacher-reviewed score yet"}</p></div>
+          <div><small>Latest score</small><strong>{latestScore??"—"}</strong></div>
+          <div><small>Activities</small><strong>{studentResponses.length}</strong></div>
+          <div><small>Speaking</small><strong>{totalMinutes.toFixed(1)}m</strong></div>
+          <div><small>Reviewed</small><strong>{scored.length}</strong></div>
+          <div><small>Pending</small><strong>{pending}</strong></div>
+        </section>
+
+        <section className="student-profile-panel">
+          <div className="student-profile-panel-title"><div><span>RUBRIC DEVELOPMENT</span><h3>Average speaking indicators</h3></div><BarChart3 size={19}/></div>
+          <div className="student-rubric-progress">
+            {rubricAverages.map(item=><div key={item.label}><div><span>{item.label}</span><strong>{item.value!==null?`${item.value}/5`:"—"}</strong></div><i><b style={{width:item.value!==null?`${(item.value/5)*100}%`:"0%"}}/></i></div>)}
+          </div>
+        </section>
+
+        <section className="student-profile-panel">
+          <div className="student-profile-panel-title"><div><span>SCORE HISTORY</span><h3>Development across reviewed activities</h3></div><Trophy size={19}/></div>
+          {scored.length?<div className="student-score-history">
+            {scored.slice().reverse().map((item:any,index:number)=><div key={item.speaking.id} className="score-history-item">
+              <div className="score-history-bar"><i style={{height:`${Math.max(10,((item.feedback.overall_score||0)/maxScore)*100)}%`}}/></div>
+              <strong>{item.feedback.overall_score}</strong>
+              <span>{index+1}</span>
+            </div>)}
+          </div>:<div className="student-profile-empty">Score development will appear after the first teacher review.</div>}
+        </section>
+
+        <section className="student-profile-panel">
+          <div className="student-profile-panel-title"><div><span>ACTIVITY HISTORY</span><h3>Submissions, scores, and feedback</h3></div><ListChecks size={19}/></div>
+          <div className="student-history-list">
+            {reviewed.map((item:any)=>{
+              const score=item.feedback?.overall_score;
+              const submitted=item.response?.submitted_at||item.speaking?.created_at;
+              return <article key={item.speaking.id} className="student-history-card">
+                <div className={classNames("history-score",score!=null?"reviewed":"pending")}>{score!=null?<><strong>{score}</strong><span>/100</span></>:<Clock3 size={18}/>}</div>
+                <div><div className="history-topline"><b>{score!=null?"Reviewed":"Waiting review"}</b>{submitted&&<span>{new Date(submitted).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}</span>}</div><h4>{item.activity?.title||"Speaking activity"}</h4>{item.feedback?<p>{item.feedback.improvement_feedback}</p>:<p>Teacher review has not been saved yet.</p>}</div>
+                <button className="btn btn-soft" onClick={()=>onOpenSubmission(item.speaking)}>{score!=null?"Open review":"Review"}<ChevronRight size={14}/></button>
+              </article>
+            })}
+            {!reviewed.length&&<div className="student-profile-empty">This student has not submitted a speaking activity yet.</div>}
+          </div>
+        </section>
+
+        {scored[0]?.feedback&&<section className="student-latest-feedback">
+          <div><CheckCircle2 size={18}/><span>LATEST STRENGTH</span><p>{scored[0].feedback.positive_feedback}</p></div>
+          <div><ArrowRight size={18}/><span>NEXT STEP</span><p>{scored[0].feedback.improvement_feedback}</p></div>
+        </section>}
+      </div>
+    </aside>
   </div>
 }
 
