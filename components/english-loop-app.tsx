@@ -41,6 +41,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import StudentCreateModal from "@/components/student-create-modal";
+import { PinChangeCard, StudentPinResetModal } from "@/components/pin-security";
+import StudentTaskStrip from "@/components/student-task-strip";
 import {
   demoActivities,
   demoContents,
@@ -95,6 +97,15 @@ type FeedbackRow = {
   confidence: number;
   positive_feedback: string;
   improvement_feedback: string;
+};
+
+type AssignmentRow = {
+  id: string;
+  activity_id: string;
+  class_id?: string | null;
+  student_id?: string | null;
+  start_at?: string | null;
+  deadline?: string | null;
 };
 
 const typeMeta = {
@@ -457,6 +468,13 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   const [responses, setResponses] = useState<ResponseRow[]>([]);
   const [speaking, setSpeaking] = useState<SpeakingRow[]>([]);
   const [feedback, setFeedback] = useState<FeedbackRow[]>([]);
+  const [assignments, setAssignments] = useState<AssignmentRow[]>(isDemo ? demoActivities.slice(0, 2).map((activity, index) => ({
+    id: `demo-assignment-${index + 1}`,
+    activity_id: activity.id,
+    class_id: "c1",
+    start_at: new Date().toISOString(),
+    deadline: new Date(Date.now() + (index + 2) * 86400000).toISOString(),
+  })) : []);
   const [vocabulary, setVocabulary] = useState<Array<{ id?: string; word: string; meaning?: string | null }>>(isDemo ? [
     { word: "challenge", meaning: "tantangan" }, { word: "confident", meaning: "percaya diri" }, { word: "perspective", meaning: "sudut pandang" }, { word: "improve", meaning: "meningkatkan" },
   ] : []);
@@ -470,7 +488,7 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
     const supabase = getSupabase();
     if (!supabase) return;
     setLoading(true);
-    const [contentRes, activityRes, questionRes, responseRes, speakRes, feedbackRes, vocabRes] = await Promise.all([
+    const [contentRes, activityRes, questionRes, responseRes, speakRes, feedbackRes, vocabRes, assignmentRes] = await Promise.all([
       supabase.from("contents").select("*").eq("is_published", true).order("created_at"),
       supabase.from("activities").select("*").eq("is_published", true).order("created_at"),
       supabase.from("activity_questions").select("*").order("sort_order"),
@@ -478,6 +496,7 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
       supabase.from("speaking_submissions").select("*").order("created_at", { ascending: false }),
       supabase.from("feedback").select("*"),
       supabase.from("vocabulary").select("*").eq("student_id", profile.id).order("created_at", { ascending: false }),
+      supabase.from("assignments").select("*").order("created_at", { ascending: false }),
     ]);
     if (contentRes.data) setContents(contentRes.data as ContentItem[]);
     if (activityRes.data) setActivities(activityRes.data as ActivityItem[]);
@@ -486,6 +505,7 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
     if (speakRes.data) setSpeaking(speakRes.data as SpeakingRow[]);
     if (feedbackRes.data) setFeedback(feedbackRes.data as FeedbackRow[]);
     if (vocabRes.data) setVocabulary(vocabRes.data as typeof vocabulary);
+    if (assignmentRes.data) setAssignments(assignmentRes.data as AssignmentRow[]);
     setLoading(false);
   }, [isDemo, profile.id]);
 
@@ -499,7 +519,12 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
     { label: "Minutes", value: Math.round(speakingSeconds / 60), icon: Clock3 },
     { label: "Vocabulary", value: vocabulary.length + (isDemo ? 28 : 0), icon: BookOpen },
   ];
-  const incomplete = activities.find((a) => !responses.some((r) => r.activity_id === a.id && r.status === "submitted")) || activities[0];
+  const assignedActivityIds = useMemo(() => new Set(assignments.map((item) => item.activity_id)), [assignments]);
+  const assignedActivities = activities.filter((activity) => assignedActivityIds.has(activity.id));
+  const practiceActivities = activities.slice().sort((a, b) => Number(assignedActivityIds.has(b.id)) - Number(assignedActivityIds.has(a.id)));
+  const incomplete = assignedActivities.find((a) => !responses.some((r) => r.activity_id === a.id && r.status === "submitted"))
+    || activities.find((a) => !responses.some((r) => r.activity_id === a.id && r.status === "submitted"))
+    || activities[0];
   const filteredContents = contents.filter((item) => (filter === "all" || item.content_type === filter) && `${item.title} ${item.topic}`.toLowerCase().includes(search.toLowerCase()));
 
   async function submitActivity(payload: { answers: Record<string, string>; confidence: number; difficulty: string; note: string; audioBlob: Blob; audioSeconds: number }) {
@@ -558,6 +583,7 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
               <div className="focus-loop"><div className="focus-ring"><Mic size={28} /></div><span>INPUT</span><i>→</i><span>OUTPUT</span></div>
             </section>
             <div className="stat-grid">{stats.map(({label,value,icon: Icon}) => <div className="stat-card" key={label}><div className="stat-icon"><Icon size={18} /></div><strong>{value}</strong><span>{label}</span></div>)}</div>
+            <StudentTaskStrip assignments={assignments} activities={activities} contents={contents} responses={responses} onOpen={(activity:any)=>setSelectedActivity(activity)} />
             <div className="section-row"><div><h2>Pick up where you left off</h2><p>Short input. Real speaking.</p></div><button className="text-btn" onClick={() => setView("explore")}>See all <ArrowRight size={15} /></button></div>
             <div className="content-scroll">{contents.slice(0,3).map((content) => {
               const meta = typeMeta[content.content_type]; const Icon = meta.icon; const activity = activities.find((a) => a.content_id === content.id);
@@ -571,11 +597,20 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
             <div className="library-grid">{filteredContents.map((content) => { const meta=typeMeta[content.content_type]; const Icon=meta.icon; const activity=activities.find((a)=>a.content_id===content.id); return <article className="library-card" key={content.id}><div className={classNames("library-art",meta.className)}><div className="library-icon"><Icon size={26}/></div><div className="library-level">{content.cefr_level}</div><span>{meta.label}</span></div><div className="library-body"><div className="content-tags"><span>{content.format}</span><span>{content.duration_minutes} min</span></div><h3>{content.title}</h3><p>{content.description}</p><div className="library-footer"><span>{content.topic}</span><button onClick={()=>activity&&setSelectedActivity(activity)}><ArrowRight size={16}/></button></div></div></article>})}</div>
           </div>}
 
-          {view === "speak" && <div className="student-page"><div className="page-intro"><div><div className="eyebrow">SPEAK</div><h1>Your voice is the output.</h1><p>Choose a challenge. You already have something to say.</p></div></div><div className="speak-list">{activities.map((activity) => { const content=contents.find((c)=>c.id===activity.content_id); if(!content) return null; const done=responses.some((r)=>r.activity_id===activity.id&&r.status==="submitted"); return <article className="speak-row" key={activity.id}><div className={classNames("speak-row-icon",typeMeta[content.content_type].className)}><Mic size={20}/></div><div className="speak-row-main"><div className="content-tags"><span>{content.cefr_level}</span><span>{formatDuration(activity.min_duration_seconds)}–{formatDuration(activity.max_duration_seconds)}</span>{done&&<span className="done-tag">Done</span>}</div><h3>{activity.title}</h3><p>{activity.speaking_prompt}</p></div><button className="btn btn-soft" onClick={()=>setSelectedActivity(activity)}>{done?"Practice again":"Start"}<ArrowRight size={15}/></button></article>})}</div></div>}
+          {view === "speak" && <div className="student-page"><div className="page-intro"><div><div className="eyebrow">SPEAK</div><h1>Your voice is the output.</h1><p>Choose a challenge. You already have something to say.</p></div></div><div className="speak-list">{practiceActivities.map((activity) => { const content=contents.find((c)=>c.id===activity.content_id); if(!content) return null; const done=responses.some((r)=>r.activity_id===activity.id&&r.status==="submitted"); return <article className="speak-row" key={activity.id}><div className={classNames("speak-row-icon",typeMeta[content.content_type].className)}><Mic size={20}/></div><div className="speak-row-main"><div className="content-tags"><span>{content.cefr_level}</span><span>{formatDuration(activity.min_duration_seconds)}–{formatDuration(activity.max_duration_seconds)}</span>{assignedActivityIds.has(activity.id)&&<span className="assigned-tag">Assigned</span>}{done&&<span className="done-tag">Done</span>}</div><h3>{activity.title}</h3><p>{activity.speaking_prompt}</p></div><button className="btn btn-soft" onClick={()=>setSelectedActivity(activity)}>{done?"Practice again":"Start"}<ArrowRight size={15}/></button></article>})}</div></div>}
 
           {view === "progress" && <div className="student-page"><div className="page-intro"><div><div className="eyebrow">MY ENGLISH JOURNEY</div><h1>Progress you can actually see.</h1><p>Not perfection. More exposure, more expression, more confidence over time.</p></div></div><div className="journey-hero"><div><small>TOTAL ACTIVE ENGLISH</small><strong>{Math.max(Math.round(speakingSeconds/60), isDemo?12:0)} min</strong><span>of speaking practice</span></div><div className="journey-bars">{[38,51,70,94,112].map((n,i)=><div key={n}><span style={{height:`${25+i*14}%`}}/><small>W{i+1}</small></div>)}</div></div><div className="stat-grid">{stats.map(({label,value,icon:Icon})=><div className="stat-card" key={label}><div className="stat-icon"><Icon size={18}/></div><strong>{value}</strong><span>{label}</span></div>)}</div><div className="progress-columns"><section className="panel-card"><div className="panel-title"><div><h3>Vocabulary collected</h3><p>Words you met inside real context.</p></div><BookOpen size={20}/></div><div className="word-cloud">{vocabulary.slice(0,12).map((item,i)=><span key={`${item.word}-${i}`}>{item.word}</span>)}</div></section><section className="panel-card"><div className="panel-title"><div><h3>Latest teacher feedback</h3><p>Use one improvement at a time.</p></div><MessageSquareText size={20}/></div>{feedback.length?<div className="feedback-snippet"><strong>You did well</strong><p>{feedback[0].positive_feedback}</p><strong>Try this next</strong><p>{feedback[0].improvement_feedback}</p></div>:<div className="empty-mini"><Sparkles size={22}/><p>Your teacher feedback will appear here after a speaking submission is reviewed.</p></div>}</section></div></div>}
 
-          {view === "profile" && <div className="student-page"><div className="profile-card"><div className="big-avatar">{profile.name.charAt(0)}</div><div><div className="eyebrow">STUDENT PROFILE</div><h1>{profile.name}</h1><p>@{profile.username || "student"}</p></div><div className="profile-chips"><span>{profile.cefr_level}</span><span>{isDemo?"Class 10A":"English Loop"}</span></div><button className="btn btn-soft" onClick={onLogout}><LogOut size={16}/> Leave {isDemo?"demo":"account"}</button></div><div className="profile-message"><Sparkles size={22}/><div><strong>Your goal is not to sound perfect.</strong><p>Your goal is to have more things to say, and more courage to say them.</p></div></div></div>}
+          {view === "profile" && <div className="student-page">
+            <div className="profile-card">
+              <div className="big-avatar">{profile.name.charAt(0)}</div>
+              <div><div className="eyebrow">STUDENT PROFILE</div><h1>{profile.name}</h1><p>@{profile.username || "student"}</p></div>
+              <div className="profile-chips"><span>{profile.cefr_level}</span><span>{isDemo?"Class 10A":"English Loop"}</span></div>
+              <button className="btn btn-soft" onClick={onLogout}><LogOut size={16}/> Leave {isDemo?"demo":"account"}</button>
+            </div>
+            <div className="profile-message"><Sparkles size={22}/><div><strong>Your goal is not to sound perfect.</strong><p>Your goal is to have more things to say, and more courage to say them.</p></div></div>
+            <PinChangeCard isDemo={isDemo} />
+          </div>}
         </>}
       </main>
 
@@ -600,19 +635,21 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   const [responses, setResponses] = useState<any[]>([]);
   const [speaking, setSpeaking] = useState<any[]>(isDemo ? demoSubmissions : []);
   const [feedback, setFeedback] = useState<any[]>(isDemo ? [{ speaking_id: "sp1" }] : []);
+  const [assignments, setAssignments] = useState<any[]>(isDemo ? demoActivities.slice(0,2).map((activity,index)=>({id:`demo-teacher-assignment-${index}`,activity_id:activity.id,class_id:"c1",deadline:new Date(Date.now()+(index+2)*86400000).toISOString()})) : []);
   const [selectedSpeaking, setSelectedSpeaking] = useState<any | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(!isDemo);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [studentCreatorOpen, setStudentCreatorOpen] = useState(false);
-  const [builder, setBuilder] = useState({ title:"", type:"read", level:"A2", topic:"", duration:"4", body:"", prompt:"", min:"45", max:"90", classId:"" });
+  const [pinStudent, setPinStudent] = useState<any | null>(null);
+  const [builder, setBuilder] = useState({ title:"", type:"read", level:"A2", topic:"", duration:"4", body:"", prompt:"", min:"45", max:"90", classId:"", deadline:"" });
   const [builderBusy, setBuilderBusy] = useState(false);
 
   const loadTeacher = useCallback(async()=>{
     if(isDemo) return;
     const supabase=getSupabase(); if(!supabase) return;
     setLoading(true);
-    const [profilesRes, contentRes, activityRes, classRes, responseRes, speakingRes, feedbackRes]=await Promise.all([
+    const [profilesRes, contentRes, activityRes, classRes, responseRes, speakingRes, feedbackRes, assignmentRes]=await Promise.all([
       supabase.from("profiles").select("*").eq("role","student").order("name"),
       supabase.from("contents").select("*").order("created_at",{ascending:false}),
       supabase.from("activities").select("*").order("created_at",{ascending:false}),
@@ -620,6 +657,7 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
       supabase.from("responses").select("*").order("submitted_at",{ascending:false}),
       supabase.from("speaking_submissions").select("*").order("created_at",{ascending:false}),
       supabase.from("feedback").select("*").order("created_at",{ascending:false}),
+      supabase.from("assignments").select("*").order("created_at",{ascending:false}),
     ]);
     if(profilesRes.data) setStudents(profilesRes.data);
     if(contentRes.data) setContents(contentRes.data);
@@ -628,6 +666,7 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
     if(responseRes.data) setResponses(responseRes.data);
     if(speakingRes.data) setSpeaking(speakingRes.data);
     if(feedbackRes.data) setFeedback(feedbackRes.data);
+    if(assignmentRes.data) setAssignments(assignmentRes.data);
     setLoading(false);
   },[isDemo]);
   useEffect(()=>{loadTeacher()},[loadTeacher]);
@@ -657,6 +696,8 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
       const contentId=`demo-content-${Date.now()}`; const activityId=`demo-act-${Date.now()}`;
       setContents((old:any[])=>[{id:contentId,title:builder.title,description:`Teacher-created ${builder.type} content`,content_type:builder.type,format:builder.type==="read"?"Article":builder.type==="watch"?"Short video":"Mini podcast",cefr_level:builder.level,topic:builder.topic,duration_minutes:Number(builder.duration),content_body:builder.body,vocabulary_focus:[]},...old]);
       setActivities((old:any[])=>[{id:activityId,content_id:contentId,title:builder.title,speaking_prompt:builder.prompt,instructions:"Consume the input, capture the main idea, then speak in your own words.",min_duration_seconds:Number(builder.min),max_duration_seconds:Number(builder.max)},...old]);
+      if(builder.classId) setAssignments((old:any[])=>[{id:`demo-assignment-${Date.now()}`,activity_id:activityId,class_id:builder.classId,deadline:builder.deadline?new Date(`${builder.deadline}T23:59:59`).toISOString():null},...old]);
+      setBuilder({ title:"", type:"read", level:"A2", topic:"", duration:"4", body:"", prompt:"", min:"45", max:"90", classId:"", deadline:"" });
       setBuilderOpen(false); return;
     }
     const supabase=getSupabase(); if(!supabase) return;
@@ -670,7 +711,8 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
       {activity_id:activity.id,kind:"vocabulary",prompt:"Write three useful words from this content.",sort_order:2},
       {activity_id:activity.id,kind:"reflection",prompt:"What did you find interesting?",sort_order:3},
     ]);
-    if(builder.classId) await supabase.from("assignments").insert({activity_id:activity.id,class_id:builder.classId,created_by:profile.id});
+    if(builder.classId) await supabase.from("assignments").insert({activity_id:activity.id,class_id:builder.classId,created_by:profile.id,deadline:builder.deadline?new Date(`${builder.deadline}T23:59:59`).toISOString():null});
+    setBuilder({ title:"", type:"read", level:"A2", topic:"", duration:"4", body:"", prompt:"", min:"45", max:"90", classId:"", deadline:"" });
     setBuilderBusy(false); setBuilderOpen(false); await loadTeacher();
   }
 
@@ -697,11 +739,21 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
       {loading?<div className="loading-screen"><Loader2 className="spin"/><span>Preparing teacher workspace…</span></div>:<>
         {view==="dashboard"&&<div className="teacher-page"><div className="teacher-page-head"><div><div className="eyebrow">TEACHER DASHBOARD</div><h1>{greeting()}, {profile.name.split(" ")[0]}.</h1><p>See where students are in the loop and what needs your attention.</p></div><button className="btn btn-primary" onClick={()=>setBuilderOpen(true)}><Plus size={17}/> New activity</button></div><div className="teacher-stats"><div><span><Users size={18}/></span><strong>{students.length}</strong><small>Students</small></div><div><span><ListChecks size={18}/></span><strong>{activities.length}</strong><small>Activities</small></div><div><span><Mic size={18}/></span><strong>{speaking.length}</strong><small>Submissions</small></div><div className="attention"><span><MessageSquareText size={18}/></span><strong>{pending}</strong><small>Pending feedback</small></div></div><div className="teacher-grid"><section className="teacher-panel wide"><div className="panel-title"><div><h3>Recent speaking</h3><p>Latest student output waiting in the loop.</p></div><button className="text-btn" onClick={()=>setView("submissions")}>View all <ArrowRight size={15}/></button></div><div className="submission-table"><div className="table-head"><span>Student</span><span>Activity</span><span>Duration</span><span>Feedback</span><span/></div>{speaking.slice(0,5).map((row:any)=>{const meta=submissionMeta(row);return <button className="table-row" key={row.id} onClick={()=>openSubmission(row)}><span><b className="table-avatar">{meta.student.charAt(0)}</b>{meta.student}</span><span>{meta.activity}</span><span>{formatDuration(meta.duration_seconds)}</span><span className={meta.feedback?"status-done":"status-pending"}>{meta.feedback?"Done":"Pending"}</span><span><ChevronRight size={16}/></span></button>})}{!speaking.length&&<div className="empty-table">No speaking submissions yet.</div>}</div></section><section className="teacher-panel"><div className="panel-title"><div><h3>Loop health</h3><p>Simple signals, not noisy analytics.</p></div><BarChart3 size={20}/></div><div className="health-list"><div><span>Speaking completion</span><strong>{isDemo?"82%":speaking.length?"Active":"—"}</strong><i><b style={{width:isDemo?"82%":speaking.length?"64%":"0%"}}/></i></div><div><span>Feedback complete</span><strong>{speaking.length?`${Math.round(((speaking.length-pending)/speaking.length)*100)}%`:"—"}</strong><i><b style={{width:speaking.length?`${((speaking.length-pending)/speaking.length)*100}%`:"0%"}}/></i></div><div><span>Weekly practice</span><strong>{isDemo?"18 min":"Live"}</strong><i><b style={{width:isDemo?"74%":"48%"}}/></i></div></div></section></div></div>}
 
-        {view==="students"&&<div className="teacher-page"><div className="teacher-page-head"><div><div className="eyebrow">STUDENTS</div><h1>Know the learner behind the score.</h1><p>Level, practice, and consistency in one clear view.</p></div><button className="btn btn-primary" onClick={()=>setStudentCreatorOpen(true)}><Plus size={17}/> Add student</button></div><div className="student-table-card"><div className="student-table-head"><span>Student</span><span>Level</span><span>Class</span><span>Activities</span><span>Speaking</span><span>Streak</span></div>{students.map((s:any)=>{const className=isDemo?s.class_name:classes.find((c:any)=>c.id===s.class_id)?.name||"—"; const studentResponses=isDemo?s.completed:responses.filter((r:any)=>r.student_id===s.id&&r.status==="submitted").length; const studentSpeak=isDemo?s.speakingMinutes:speaking.filter((sp:any)=>responseMap[sp.response_id]?.student_id===s.id).reduce((sum:number,sp:any)=>sum+sp.duration_seconds,0)/60; return <div className="student-table-row" key={s.id}><span><b className="table-avatar">{s.name.charAt(0)}</b><div><strong>{s.name}</strong><small>@{s.username||"student"}</small></div></span><span><b className="level-badge">{s.cefr_level}</b></span><span>{className}</span><span>{studentResponses}</span><span>{Number(studentSpeak).toFixed(1)} min</span><span><Flame size={15}/>{isDemo?s.streak:Math.min(studentResponses,7)} days</span></div>})}{!students.length&&<div className="empty-table">No students yet. Add users in Supabase Auth, then assign their class in English Loop.</div>}</div></div>}
+        {view==="students"&&<div className="teacher-page">
+          <div className="teacher-page-head"><div><div className="eyebrow">STUDENTS</div><h1>Know the learner behind the score.</h1><p>Create accounts, watch practice, and help students recover access without leaving English Loop.</p></div><button className="btn btn-primary" onClick={()=>setStudentCreatorOpen(true)}><Plus size={17}/> Add student</button></div>
+          <div className="student-table-card">
+            <div className="student-table-head"><span>Student</span><span>Level</span><span>Class</span><span>Activities</span><span>Speaking</span><span>Streak</span><span>Access</span></div>
+            {students.map((s:any)=>{const className=isDemo?s.class_name:classes.find((c:any)=>c.id===s.class_id)?.name||"—"; const studentResponses=isDemo?s.completed:responses.filter((r:any)=>r.student_id===s.id&&r.status==="submitted").length; const studentSpeak=isDemo?s.speakingMinutes:speaking.filter((sp:any)=>responseMap[sp.response_id]?.student_id===s.id).reduce((sum:number,sp:any)=>sum+sp.duration_seconds,0)/60; return <div className="student-table-row" key={s.id}><span><b className="table-avatar">{s.name.charAt(0)}</b><div><strong>{s.name}</strong><small>@{s.username||"student"}</small></div></span><span><b className="level-badge">{s.cefr_level}</b></span><span>{className}</span><span>{studentResponses}</span><span>{Number(studentSpeak).toFixed(1)} min</span><span className="streak-cell"><Flame size={15}/>{isDemo?s.streak:Math.min(studentResponses,7)} days</span><button className="student-reset-btn" onClick={()=>setPinStudent(s)}>Reset PIN</button></div>})}
+            {!students.length&&<div className="empty-table">No students yet. Use <strong>Add student</strong> to create the first learner account.</div>}
+          </div>
+        </div>}
 
         {view==="content"&&<div className="teacher-page"><div className="teacher-page-head"><div><div className="eyebrow">CONTENT</div><h1>Your input library.</h1><p>Every input should give students something worth saying.</p></div><button className="btn btn-primary" onClick={()=>setBuilderOpen(true)}><Plus size={17}/> Add content</button></div><div className="teacher-content-grid">{contents.map((c:any)=>{const meta=typeMeta[c.content_type as keyof typeof typeMeta]||typeMeta.read;const Icon=meta.icon;return <article className="teacher-content-card" key={c.id}><div className={classNames("teacher-content-icon",meta.className)}><Icon size={21}/></div><div><div className="content-tags"><span>{c.cefr_level}</span><span>{c.duration_minutes} min</span></div><h3>{c.title}</h3><p>{c.topic}</p></div><button className="icon-btn danger" onClick={()=>deleteContent(c.id)}><Trash2 size={16}/></button></article>})}</div></div>}
 
-        {view==="activities"&&<div className="teacher-page"><div className="teacher-page-head"><div><div className="eyebrow">ACTIVITY BUILDER</div><h1>Pair every input with an output.</h1><p>The speaking prompt is where passive understanding becomes active English.</p></div><button className="btn btn-primary" onClick={()=>setBuilderOpen(true)}><Plus size={17}/> Build activity</button></div><div className="activity-admin-list">{activities.map((a:any)=>{const c=contents.find((x:any)=>x.id===a.content_id);return <article key={a.id}><div className="activity-admin-index">{String(activities.indexOf(a)+1).padStart(2,"0")}</div><div><div className="content-tags"><span>{c?.cefr_level||"—"}</span><span>{c?.content_type||"input"}</span><span>{formatDuration(a.min_duration_seconds)}–{formatDuration(a.max_duration_seconds)}</span></div><h3>{a.title}</h3><p>“{a.speaking_prompt}”</p></div><div className="pair-badge"><span>INPUT</span><ArrowRight size={14}/><span>OUTPUT</span></div></article>})}</div></div>}
+        {view==="activities"&&<div className="teacher-page">
+          <div className="teacher-page-head"><div><div className="eyebrow">ACTIVITY BUILDER</div><h1>Pair every input with an output.</h1><p>Publish a challenge, assign it to a class, and give students a clear deadline.</p></div><button className="btn btn-primary" onClick={()=>setBuilderOpen(true)}><Plus size={17}/> Build activity</button></div>
+          <div className="activity-admin-list">{activities.map((a:any)=>{const c=contents.find((x:any)=>x.id===a.content_id); const assignment=assignments.find((item:any)=>item.activity_id===a.id); const assignedClass=assignment?.class_id?classes.find((item:any)=>item.id===assignment.class_id)?.name:null; return <article key={a.id}><div className="activity-admin-index">{String(activities.indexOf(a)+1).padStart(2,"0")}</div><div><div className="content-tags"><span>{c?.cefr_level||"—"}</span><span>{c?.content_type||"input"}</span><span>{formatDuration(a.min_duration_seconds)}–{formatDuration(a.max_duration_seconds)}</span></div><h3>{a.title}</h3><p>“{a.speaking_prompt}”</p></div><div className="activity-admin-right"><div className="pair-badge"><span>INPUT</span><ArrowRight size={14}/><span>OUTPUT</span></div><small>{assignedClass?`Assigned · ${assignedClass}`:"Open practice"}</small>{assignment?.deadline&&<small>Due {new Date(assignment.deadline).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</small>}</div></article>})}{!activities.length&&<div className="empty-state"><ListChecks size={28}/><h3>No activities yet</h3><p>Build the first input-to-output loop for your class.</p></div>}</div>
+        </div>}
 
         {view==="submissions"&&<div className="teacher-page"><div className="teacher-page-head"><div><div className="eyebrow">SUBMISSIONS</div><h1>Listen for growth, not perfection.</h1><p>Give one clear strength and one useful next step.</p></div><div className="pending-pill">{pending} need feedback</div></div><div className="submission-card-list">{speaking.map((row:any)=>{const meta=submissionMeta(row);return <button key={row.id} className="submission-card" onClick={()=>openSubmission(row)}><div className="submission-avatar">{meta.student.charAt(0)}</div><div className="submission-main"><strong>{meta.student}</strong><span>{meta.activity}</span></div><div><small>DURATION</small><strong>{formatDuration(meta.duration_seconds)}</strong></div><div><small>FEEDBACK</small><span className={meta.feedback?"status-done":"status-pending"}>{meta.feedback?"Done":"Pending"}</span></div><ChevronRight size={18}/></button>})}{!speaking.length&&<div className="empty-state"><Mic size={28}/><h3>No speaking yet</h3><p>Student submissions will appear here after they complete a learning loop.</p></div>}</div></div>}
 
@@ -711,7 +763,7 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
       </>}
     </main>
 
-    {builderOpen&&<div className="modal-backdrop" onMouseDown={()=>setBuilderOpen(false)}><div className="builder-modal" onMouseDown={(e)=>e.stopPropagation()}><div className="builder-head"><div><div className="eyebrow">ACTIVITY BUILDER</div><h2>Turn input into output.</h2></div><button className="icon-btn" onClick={()=>setBuilderOpen(false)}><X size={18}/></button></div><form className="builder-form" onSubmit={createActivity}><div className="form-grid two"><label><span>Activity title</span><input required value={builder.title} onChange={(e)=>setBuilder({...builder,title:e.target.value})} placeholder="Anime Reflection #01"/></label><label><span>Topic</span><input required value={builder.topic} onChange={(e)=>setBuilder({...builder,topic:e.target.value})} placeholder="Friendship"/></label></div><div className="form-grid three"><label><span>Input type</span><select value={builder.type} onChange={(e)=>setBuilder({...builder,type:e.target.value})}><option value="read">Read</option><option value="watch">Watch</option><option value="listen">Listen</option></select></label><label><span>CEFR level</span><select value={builder.level} onChange={(e)=>setBuilder({...builder,level:e.target.value})}><option>A1</option><option>A2</option><option>B1</option><option>B2</option></select></label><label><span>Duration</span><input type="number" min="1" value={builder.duration} onChange={(e)=>setBuilder({...builder,duration:e.target.value})}/></label></div><label><span>Input text / transcript <em>optional</em></span><textarea rows={4} value={builder.body} onChange={(e)=>setBuilder({...builder,body:e.target.value})} placeholder="Paste an original short text, transcript, or content notes…"/></label><label><span>Speaking prompt</span><textarea required rows={3} value={builder.prompt} onChange={(e)=>setBuilder({...builder,prompt:e.target.value})} placeholder="Tell us what happened and which part you found most interesting."/></label><div className="form-grid three"><label><span>Min seconds</span><input type="number" min="15" value={builder.min} onChange={(e)=>setBuilder({...builder,min:e.target.value})}/></label><label><span>Max seconds</span><input type="number" min="30" value={builder.max} onChange={(e)=>setBuilder({...builder,max:e.target.value})}/></label><label><span>Assign to class</span><select value={builder.classId} onChange={(e)=>setBuilder({...builder,classId:e.target.value})}><option value="">Not yet</option>{classes.map((c:any)=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label></div><div className="builder-actions"><button type="button" className="btn btn-soft" onClick={()=>setBuilderOpen(false)}>Cancel</button><button className="btn btn-primary" disabled={builderBusy}>{builderBusy?<Loader2 className="spin" size={17}/>:<Plus size={17}/>} Publish activity</button></div></form></div></div>}
+    {builderOpen&&<div className="modal-backdrop" onMouseDown={()=>setBuilderOpen(false)}><div className="builder-modal" onMouseDown={(e)=>e.stopPropagation()}><div className="builder-head"><div><div className="eyebrow">ACTIVITY BUILDER</div><h2>Turn input into output.</h2></div><button className="icon-btn" onClick={()=>setBuilderOpen(false)}><X size={18}/></button></div><form className="builder-form" onSubmit={createActivity}><div className="form-grid two"><label><span>Activity title</span><input required value={builder.title} onChange={(e)=>setBuilder({...builder,title:e.target.value})} placeholder="Anime Reflection #01"/></label><label><span>Topic</span><input required value={builder.topic} onChange={(e)=>setBuilder({...builder,topic:e.target.value})} placeholder="Friendship"/></label></div><div className="form-grid three"><label><span>Input type</span><select value={builder.type} onChange={(e)=>setBuilder({...builder,type:e.target.value})}><option value="read">Read</option><option value="watch">Watch</option><option value="listen">Listen</option></select></label><label><span>CEFR level</span><select value={builder.level} onChange={(e)=>setBuilder({...builder,level:e.target.value})}><option>A1</option><option>A2</option><option>B1</option><option>B2</option></select></label><label><span>Duration</span><input type="number" min="1" value={builder.duration} onChange={(e)=>setBuilder({...builder,duration:e.target.value})}/></label></div><label><span>Input text / transcript <em>optional</em></span><textarea rows={4} value={builder.body} onChange={(e)=>setBuilder({...builder,body:e.target.value})} placeholder="Paste an original short text, transcript, or content notes…"/></label><label><span>Speaking prompt</span><textarea required rows={3} value={builder.prompt} onChange={(e)=>setBuilder({...builder,prompt:e.target.value})} placeholder="Tell us what happened and which part you found most interesting."/></label><div className="form-grid two"><label><span>Min seconds</span><input type="number" min="15" value={builder.min} onChange={(e)=>setBuilder({...builder,min:e.target.value})}/></label><label><span>Max seconds</span><input type="number" min="30" value={builder.max} onChange={(e)=>setBuilder({...builder,max:e.target.value})}/></label></div><div className="form-grid two"><label><span>Assign to class</span><select value={builder.classId} onChange={(e)=>setBuilder({...builder,classId:e.target.value})}><option value="">Open practice</option>{classes.map((c:any)=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label><span>Deadline <em>optional</em></span><input type="date" value={builder.deadline} onChange={(e)=>setBuilder({...builder,deadline:e.target.value})}/></label></div><div className="builder-actions"><button type="button" className="btn btn-soft" onClick={()=>setBuilderOpen(false)}>Cancel</button><button className="btn btn-primary" disabled={builderBusy}>{builderBusy?<Loader2 className="spin" size={17}/>:<Plus size={17}/>} Publish activity</button></div></form></div></div>}
 
     {studentCreatorOpen&&<StudentCreateModal
       classes={classes.map((item:any)=>({id:item.id,name:item.name}))}
@@ -725,6 +777,8 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
         }
       }}
     />}
+
+    {pinStudent&&<StudentPinResetModal student={pinStudent} isDemo={isDemo} onClose={()=>setPinStudent(null)} />}
 
     {selectedSpeaking&&<FeedbackDrawer submission={selectedSpeaking} audioUrl={audioUrl} isDemo={isDemo} teacherId={profile.id} existing={feedback.find((f:any)=>f.speaking_id===selectedSpeaking.id)} onClose={()=>{setSelectedSpeaking(null);setAudioUrl(null)}} onSaved={async(row)=>{if(isDemo){setFeedback((old:any[])=>[{...row,speaking_id:selectedSpeaking.id},...old.filter((f:any)=>f.speaking_id!==selectedSpeaking.id)]);setSpeaking((old:any[])=>old.map((s:any)=>s.id===selectedSpeaking.id?{...s,feedback:true}:s));}else await loadTeacher();setSelectedSpeaking(null)}}/>}
   </div>
