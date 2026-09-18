@@ -152,7 +152,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <div className={classNames("brand", compact && "brand-compact")}>
       <img
-        src="/brand/english-loop-logo.svg"
+        src="/brand/english-loop-logo-512.png"
         alt="English Loop"
         className="brand-image"
         draggable={false}

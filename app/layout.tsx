@@ -25,27 +25,20 @@ export const metadata: Metadata = {
     description: "Watch. Listen. Read. Speak. Grow. A teacher-guided English learning platform by Yusril Maulana.",
     images: [
       {
-        url: "https://englishloop-beta.vercel.app/english-loop-share.png",
-        secureUrl: "https://englishloop-beta.vercel.app/english-loop-share.png",
-        width: 1200,
-        height: 630,
-        type: "image/png",
-        alt: "English Loop — Input to Output English Learning",
-      },
-      {
-        url: "https://englishloop-beta.vercel.app/brand/english-loop-logo.svg",
+        url: "https://englishloop-beta.vercel.app/brand/english-loop-logo-512.png",
+        secureUrl: "https://englishloop-beta.vercel.app/brand/english-loop-logo-512.png",
         width: 512,
         height: 512,
-        type: "image/svg+xml",
+        type: "image/png",
         alt: "English Loop logo",
       },
     ],
   },
   twitter: {
-    card: "summary_large_image",
+    card: "summary",
     title: "English Loop — Input → Output → Growth",
     description: "Watch. Listen. Read. Speak. Grow. A teacher-guided English learning platform by Yusril Maulana.",
-    images: ["https://englishloop-beta.vercel.app/english-loop-share.png"],
+    images: ["https://englishloop-beta.vercel.app/brand/english-loop-logo-512.png"],
   },
   robots: {
     index: true,
@@ -54,9 +47,10 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: "/icons/icon.svg", type: "image/svg+xml" },
+      { url: "/brand/english-loop-logo-512.png", sizes: "512x512", type: "image/png" },
     ],
     apple: [
-      { url: "/icons/icon.svg" },
+      { url: "/brand/english-loop-logo-512.png", sizes: "512x512", type: "image/png" },
     ],
   },
   appleWebApp: {
@@ -80,8 +74,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <head>
-        <link rel="image_src" href="https://englishloop-beta.vercel.app/brand/english-loop-logo.svg" />
-        <meta itemProp="image" content="https://englishloop-beta.vercel.app/brand/english-loop-logo.svg" />
+        <link rel="image_src" href="https://englishloop-beta.vercel.app/brand/english-loop-logo-512.png" />
+        <meta itemProp="image" content="https://englishloop-beta.vercel.app/brand/english-loop-logo-512.png" />
       </head>
       <body>
         {children}
