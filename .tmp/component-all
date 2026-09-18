@@ -721,4 +721,46 @@ function FeedbackDrawer({submission,audioUrl,isDemo,teacherId,existing,onClose,o
   const [improve,setImprove]=useState(existing?.improvement_feedback||"");
   const [busy,setBusy]=useState(false);
   async function save(){if(!positive.trim()||!improve.trim())return;setBusy(true);const payload={speaking_id:submission.id,...scores,positive_feedback:positive,improvement_feedback:improve,teacher_id:teacherId};if(!isDemo){const supabase=getSupabase();if(supabase){const {error}=await supabase.from("feedback").upsert(payload,{onConflict:"speaking_id"});if(error){setBusy(false);window.alert(error.message);return;}}}await onSaved(payload);setBusy(false)}
-  return <div className="drawer-backdrop"><aside className="feedback-drawer"><div className="drawer-head"><div><div className="eyebrow">SPEAKING SUBMISSION</div><h2
+  return <div className="drawer-backdrop"><aside className="feedback-drawer"><div className="drawer-head"><div><div className="eyebrow">SPEAKING SUBMISSION</div><h2>{submission.student}</h2><p>{submission.activity} · {formatDuration(submission.duration_seconds)}</p></div><button className="icon-btn" onClick={onClose}><X size={19}/></button></div><div className="drawer-scroll"><section className="listen-card"><div><div className="listen-icon"><Volume2 size={22}/></div><div><strong>Listen to speaking</strong><span>{isDemo?"Demo mode · sample metadata":"Private audio · signed access"}</span></div></div>{audioUrl?<audio controls src={audioUrl}/>:isDemo?<div className="demo-audio"><Play size={16}/><span>Audio playback appears here for real submissions</span></div>:<div className="demo-audio"><Loader2 className="spin" size={16}/><span>Preparing private audio…</span></div>}</section><section className="assessment"><h3>Simple assessment</h3><p>Score what helps the next attempt. 1 = needs support, 5 = very strong.</p>{Object.entries(scores).map(([key,value])=><div className="score-row" key={key}><span>{key[0].toUpperCase()+key.slice(1)}</span><div>{[1,2,3,4,5].map((n)=><button key={n} className={value===n?"selected":""} onClick={()=>setScores({...scores,[key]:n})}>{n}</button>)}</div></div>)}</section><section className="feedback-writing"><label><span>What you did well</span><textarea value={positive} onChange={(e)=>setPositive(e.target.value)} placeholder="You explained the main idea clearly and kept speaking even when you needed time to think."/></label><label><span>Try this next</span><textarea value={improve} onChange={(e)=>setImprove(e.target.value)} placeholder="Try connecting your ideas with because, then, and however."/></label></section></div><div className="drawer-actions"><button className="btn btn-soft" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={busy||!positive.trim()||!improve.trim()} onClick={save}>{busy?<Loader2 className="spin" size={17}/>:<Send size={17}/>} Save feedback</button></div></aside></div>
+}
+
+export default function EnglishLoopApp() {
+  const [mode, setMode] = useState<AppMode>("landing");
+  const [isDemo, setIsDemo] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [showLogin, setShowLogin] = useState(false);
+  const [booting, setBooting] = useState(true);
+
+  useEffect(() => {
+    const supabase = getSupabase();
+    if (!supabase) { setBooting(false); return; }
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!data.session?.user) { setBooting(false); return; }
+      const { data: profileData } = await supabase.from("profiles").select("id,name,username,role,class_id,cefr_level").eq("id", data.session.user.id).single();
+      if (profileData) {
+        const p = profileData as Profile;
+        setProfile(p); setMode(p.role === "student" ? "student" : "teacher");
+      }
+      setBooting(false);
+    });
+  }, []);
+
+  function startDemo(role: "student" | "teacher") {
+    setIsDemo(true);
+    const p: Profile = role === "student" ? { id: "demo-student", name: "Naila Putri", username: "naila", role: "student", cefr_level: "A2" } : { id: "demo-teacher", name: "Yusril Maulana", username: "yusril", role: "teacher", cefr_level: "B2" };
+    setProfile(p); setMode(role);
+  }
+
+  async function logout() {
+    if (!isDemo) await getSupabase()?.auth.signOut();
+    setProfile(null); setIsDemo(false); setMode("landing");
+  }
+
+  if (booting) return <div className="boot-screen"><div className="boot-logo"><Brand /></div><Loader2 className="spin" /></div>;
+  return <>
+    {mode === "landing" && <Landing onDemo={startDemo} onLogin={() => setShowLogin(true)} />}
+    {mode === "student" && profile && <StudentShell profile={profile} isDemo={isDemo} onLogout={logout} />}
+    {mode === "teacher" && profile && <TeacherShell profile={profile} isDemo={isDemo} onLogout={logout} />}
+    {showLogin && <LoginModal onClose={() => setShowLogin(false)} onSuccess={(p) => { setProfile(p); setIsDemo(false); setMode(p.role === "student" ? "student" : "teacher"); setShowLogin(false); }} />}
+  </>;
+}
