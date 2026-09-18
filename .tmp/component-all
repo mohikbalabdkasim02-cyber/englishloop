@@ -574,4 +574,123 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
 
           {view === "progress" && <div className="student-page"><div className="page-intro"><div><div className="eyebrow">MY ENGLISH JOURNEY</div><h1>Progress you can actually see.</h1><p>Not perfection. More exposure, more expression, more confidence over time.</p></div></div><div className="journey-hero"><div><small>TOTAL ACTIVE ENGLISH</small><strong>{Math.max(Math.round(speakingSeconds/60), isDemo?12:0)} min</strong><span>of speaking practice</span></div><div className="journey-bars">{[38,51,70,94,112].map((n,i)=><div key={n}><span style={{height:`${25+i*14}%`}}/><small>W{i+1}</small></div>)}</div></div><div className="stat-grid">{stats.map(({label,value,icon:Icon})=><div className="stat-card" key={label}><div className="stat-icon"><Icon size={18}/></div><strong>{value}</strong><span>{label}</span></div>)}</div><div className="progress-columns"><section className="panel-card"><div className="panel-title"><div><h3>Vocabulary collected</h3><p>Words you met inside real context.</p></div><BookOpen size={20}/></div><div className="word-cloud">{vocabulary.slice(0,12).map((item,i)=><span key={`${item.word}-${i}`}>{item.word}</span>)}</div></section><section className="panel-card"><div className="panel-title"><div><h3>Latest teacher feedback</h3><p>Use one improvement at a time.</p></div><MessageSquareText size={20}/></div>{feedback.length?<div className="feedback-snippet"><strong>You did well</strong><p>{feedback[0].positive_feedback}</p><strong>Try this next</strong><p>{feedback[0].improvement_feedback}</p></div>:<div className="empty-mini"><Sparkles size={22}/><p>Your teacher feedback will appear here after a speaking submission is reviewed.</p></div>}</section></div></div>}
 
-          {view === "profile" && <div className="student-page"><div className="profile-card"><div className="big-avatar">{profile.name.charAt(0)}</div><div><div className="eyebrow">STUDENT PROFILE</div><h1>{profile.name}</h1><p>@{profile.username || "student"}</p></div><div className="profile-chips"><span>{profile.cefr_level}</span><span>{isDemo?"Class 10A":"English Loop"}</span></div><button className="bt
+          {view === "profile" && <div className="student-page"><div className="profile-card"><div className="big-avatar">{profile.name.charAt(0)}</div><div><div className="eyebrow">STUDENT PROFILE</div><h1>{profile.name}</h1><p>@{profile.username || "student"}</p></div><div className="profile-chips"><span>{profile.cefr_level}</span><span>{isDemo?"Class 10A":"English Loop"}</span></div><button className="btn btn-soft" onClick={onLogout}><LogOut size={16}/> Leave {isDemo?"demo":"account"}</button></div><div className="profile-message"><Sparkles size={22}/><div><strong>Your goal is not to sound perfect.</strong><p>Your goal is to have more things to say, and more courage to say them.</p></div></div></div>}
+        </>}
+      </main>
+
+      <nav className="student-bottom-nav">
+        {[
+          ["home","Home",Home],["explore","Explore",Compass],["speak","Speak",Mic],["progress","Progress",BarChart3],["profile","Profile",User]
+        ].map(([key,label,Icon])=>{const IconComp=Icon as typeof Home; return <button key={key as string} className={classNames(view===key&&"active")} onClick={()=>setView(key as StudentView)}><IconComp size={20}/><span>{label as string}</span></button>})}
+      </nav>
+
+      {selectedActivity && selectedContent && <ActivityExperience activity={selectedActivity} content={selectedContent} questions={selectedQuestions} onClose={()=>setSelectedActivity(null)} onSubmit={submitActivity}/>} 
+    </div>
+  );
+}
+
+function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo: boolean; onLogout: () => void }) {
+  const [view, setView] = useState<TeacherView>("dashboard");
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const [students, setStudents] = useState<any[]>(isDemo ? demoStudents : []);
+  const [contents, setContents] = useState<any[]>(isDemo ? demoContents : []);
+  const [activities, setActivities] = useState<any[]>(isDemo ? demoActivities : []);
+  const [classes, setClasses] = useState<any[]>(isDemo ? [{id:"c1",name:"10A"},{id:"c2",name:"10B"}] : []);
+  const [responses, setResponses] = useState<any[]>([]);
+  const [speaking, setSpeaking] = useState<any[]>(isDemo ? demoSubmissions : []);
+  const [feedback, setFeedback] = useState<any[]>(isDemo ? [{ speaking_id: "sp1" }] : []);
+  const [selectedSpeaking, setSelectedSpeaking] = useState<any | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(!isDemo);
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [builder, setBuilder] = useState({ title:"", type:"read", level:"A2", topic:"", duration:"4", body:"", prompt:"", min:"45", max:"90", classId:"" });
+  const [builderBusy, setBuilderBusy] = useState(false);
+
+  const loadTeacher = useCallback(async()=>{
+    if(isDemo) return;
+    const supabase=getSupabase(); if(!supabase) return;
+    setLoading(true);
+    const [profilesRes, contentRes, activityRes, classRes, responseRes, speakingRes, feedbackRes]=await Promise.all([
+      supabase.from("profiles").select("*").eq("role","student").order("name"),
+      supabase.from("contents").select("*").order("created_at",{ascending:false}),
+      supabase.from("activities").select("*").order("created_at",{ascending:false}),
+      supabase.from("classes").select("*").order("name"),
+      supabase.from("responses").select("*").order("submitted_at",{ascending:false}),
+      supabase.from("speaking_submissions").select("*").order("created_at",{ascending:false}),
+      supabase.from("feedback").select("*").order("created_at",{ascending:false}),
+    ]);
+    if(profilesRes.data) setStudents(profilesRes.data);
+    if(contentRes.data) setContents(contentRes.data);
+    if(activityRes.data) setActivities(activityRes.data);
+    if(classRes.data) setClasses(classRes.data);
+    if(responseRes.data) setResponses(responseRes.data);
+    if(speakingRes.data) setSpeaking(speakingRes.data);
+    if(feedbackRes.data) setFeedback(feedbackRes.data);
+    setLoading(false);
+  },[isDemo]);
+  useEffect(()=>{loadTeacher()},[loadTeacher]);
+
+  const pending = isDemo ? speaking.filter((s:any)=>!s.feedback).length : speaking.filter((s:any)=>!feedback.some((f:any)=>f.speaking_id===s.id)).length;
+  const responseMap=useMemo(()=>Object.fromEntries(responses.map((r:any)=>[r.id,r])),[responses]);
+  const studentMap=useMemo(()=>Object.fromEntries(students.map((s:any)=>[s.id,s])),[students]);
+  const activityMap=useMemo(()=>Object.fromEntries(activities.map((a:any)=>[a.id,a])),[activities]);
+
+  function submissionMeta(item:any){
+    if(isDemo) return item;
+    const response=responseMap[item.response_id];
+    return { ...item, student: studentMap[response?.student_id]?.name || "Student", activity: activityMap[response?.activity_id]?.title || "Activity", feedback: feedback.some((f:any)=>f.speaking_id===item.id) };
+  }
+
+  async function openSubmission(item:any){
+    const meta=submissionMeta(item); setSelectedSpeaking(meta); setAudioUrl(null);
+    if(isDemo) return;
+    const supabase=getSupabase(); if(!supabase) return;
+    const {data}=await supabase.storage.from("speaking-audio").createSignedUrl(item.storage_path,600);
+    if(data?.signedUrl) setAudioUrl(data.signedUrl);
+  }
+
+  async function createActivity(e:React.FormEvent){
+    e.preventDefault();
+    if(isDemo){
+      const contentId=`demo-content-${Date.now()}`; const activityId=`demo-act-${Date.now()}`;
+      setContents((old:any[])=>[{id:contentId,title:builder.title,description:`Teacher-created ${builder.type} content`,content_type:builder.type,format:builder.type==="read"?"Article":builder.type==="watch"?"Short video":"Mini podcast",cefr_level:builder.level,topic:builder.topic,duration_minutes:Number(builder.duration),content_body:builder.body,vocabulary_focus:[]},...old]);
+      setActivities((old:any[])=>[{id:activityId,content_id:contentId,title:builder.title,speaking_prompt:builder.prompt,instructions:"Consume the input, capture the main idea, then speak in your own words.",min_duration_seconds:Number(builder.min),max_duration_seconds:Number(builder.max)},...old]);
+      setBuilderOpen(false); return;
+    }
+    const supabase=getSupabase(); if(!supabase) return;
+    setBuilderBusy(true);
+    const {data:content,error:contentError}=await supabase.from("contents").insert({title:builder.title,description:`${builder.topic} · ${builder.level}`,content_type:builder.type,format:builder.type==="read"?"article":builder.type==="watch"?"short video":"mini podcast",cefr_level:builder.level,topic:builder.topic,duration_minutes:Number(builder.duration),content_body:builder.body||null,vocabulary_focus:[],is_published:true,created_by:profile.id}).select("id").single();
+    if(contentError||!content){setBuilderBusy(false);window.alert(contentError?.message||"Could not create content");return;}
+    const {data:activity,error:activityError}=await supabase.from("activities").insert({content_id:content.id,title:builder.title,instructions:"Consume the input, capture the main idea, then speak in your own words.",speaking_prompt:builder.prompt,min_duration_seconds:Number(builder.min),max_duration_seconds:Number(builder.max),created_by:profile.id,is_published:true}).select("id").single();
+    if(activityError||!activity){setBuilderBusy(false);window.alert(activityError?.message||"Could not create activity");return;}
+    await supabase.from("activity_questions").insert([
+      {activity_id:activity.id,kind:"short_answer",prompt:"What is the main idea?",sort_order:1},
+      {activity_id:activity.id,kind:"vocabulary",prompt:"Write three useful words from this content.",sort_order:2},
+      {activity_id:activity.id,kind:"reflection",prompt:"What did you find interesting?",sort_order:3},
+    ]);
+    if(builder.classId) await supabase.from("assignments").insert({activity_id:activity.id,class_id:builder.classId,created_by:profile.id});
+    setBuilderBusy(false); setBuilderOpen(false); await loadTeacher();
+  }
+
+  async function deleteContent(id:string){
+    if(!window.confirm("Delete this content and its linked activity?")) return;
+    if(isDemo){setContents((old:any[])=>old.filter((x:any)=>x.id!==id));setActivities((old:any[])=>old.filter((x:any)=>x.content_id!==id));return;}
+    const supabase=getSupabase(); if(!supabase) return; await supabase.from("contents").delete().eq("id",id); await loadTeacher();
+  }
+
+  const navItems:[TeacherView,string,typeof Home][]=[
+    ["dashboard","Dashboard",Home],["students","Students",Users],["content","Content",Library],["activities","Activities",ListChecks],["submissions","Submissions",Mic],["progress","Progress",BarChart3],["settings","Settings",Settings]
+  ];
+
+  return <div className="teacher-app">
+    <aside className={classNames("teacher-sidebar",mobileMenu&&"open")}>
+      <div className="teacher-brand-row"><Brand/><button className="icon-btn sidebar-close" onClick={()=>setMobileMenu(false)}><X size={18}/></button></div>
+      <div className="teacher-school"><div className="school-icon"><GraduationCap size={20}/></div><div><strong>English Loop Class</strong><span>Learning workspace</span></div></div>
+      <nav className="teacher-nav">{navItems.map(([key,label,Icon])=><button key={key} className={classNames(view===key&&"active")} onClick={()=>{setView(key);setMobileMenu(false)}}><Icon size={18}/><span>{label}</span>{key==="submissions"&&pending>0&&<b>{pending}</b>}</button>)}</nav>
+      <div className="teacher-sidebar-foot"><div className="teacher-profile"><div className="small-avatar">{profile.name.charAt(0)}</div><div><strong>{profile.name}</strong><span>{isDemo?"Teacher Demo":"Teacher"}</span></div></div><button className="icon-btn" onClick={onLogout}><LogOut size={18}/></button></div>
+    </aside>
+    {mobileMenu&&<div className="sidebar-scrim" onClick={()=>setMobileMenu(false)}/>} 
+    <main className="teacher-main">
+      <header className="teacher-mobile-head"><button className="icon-btn" onClick={()=>setMobileMenu(true)}><Menu size={20}/></button><Brand compact/><span/></header>
+      {loading?<div className="loading-screen"><Loader2 className="spin"/><span>Preparing teacher workspace…</span></div>:<>
+        {view==="dashboard"&&<div className="teacher-page"><div className="teacher-page-head"><div><div className="eyebrow">TEACHER DASHBOARD</div><h1>{greeting()}, {profile.name.split(" ")[0]}.</h1><p>See where students are in the loop and what needs your attention.</p></div><button className="btn btn-primary" onClick={()=>setBuilderOpen(true)}><Plus size={17}/> New activity</button></div><div className="teacher-stats"><div><span><Users size={18}/></span><strong>{students.length}</strong><small>Students</small></div><div><span><ListChecks size={18}/></span><strong>{activities.length}</strong><small>Activities</small></div><div><span><Mic size={18}/></span><strong>{speaking.length}</strong><small>Submissions</small></div><div className="attention"><span><MessageSquareText size={18}/></span><strong>{pending}</strong><small>Pending feedback</small></div></div><div className="teacher-grid"><section className="teacher-panel wide"><div className="panel-title"><div><h3>Recent speaking</h3><p>Latest student output waiting in the loop.</p></div><button className="text-btn" onClick={()=>setView("submissions")}>View all <ArrowRight size={15}/></button></div><div className="submission-table"><div className="table-head"><span>Student</span><span>Activity</span><span>Duration</span><span>Feedback</span><span/></div>{speaking.slice(0,5).map((row:any)=>{const meta=submissionMeta(row);return <button className="table-row" key={row.id} onClick={()=>openSubmission(row)}><span><b className="table-avatar">{meta.student.charAt(0)}</b>{meta.student}</span><span>{meta.activity}</span><span>{formatDuration(meta.duration_seconds)}</span><span className={meta.feedback?"status-done":"status-pending"}>{meta.feedback?"Done":"Pending"}</span><span><ChevronRight size={16}/></span></button>})}{!speaking.length&&<div className="empty-table">No speaking submissions yet.</div>}</div></section><section className="teacher-panel"><div className="panel-title"><div><h3>Loop health</h3><p>Simple signals, not noisy analytics.</p></div><BarChart3 size={20}/></div><div className="health-list"><div><span>Speaking completion</span><strong>{isDemo?"82%":speaking.length?"Active":"—"}</strong><i><b style={{width:isDemo?"82%":speaking.length?"64%":"0%"}}/></i></div><div><span>Feedback complete</span><strong>{speaking.lengt
