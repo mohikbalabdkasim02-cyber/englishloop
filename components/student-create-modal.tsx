@@ -26,7 +26,7 @@ export default function StudentCreateModal({
   const [form, setForm] = useState({
     name: "",
     username: "",
-    password: "",
+    password: "254912",
     cefr_level: "A1",
     class_id: classes[0]?.id ?? "",
   });
@@ -151,20 +151,20 @@ export default function StudentCreateModal({
             </label>
 
             <label>
-              <span>Temporary password</span>
+              <span>Initial PIN</span>
               <input
                 required
                 minLength={8}
                 type="password"
                 value={form.password}
                 onChange={(event) => setForm({ ...form, password: event.target.value })}
-                placeholder="At least 8 chars"
+                placeholder="6 digit PIN"
               />
             </label>
           </div>
 
           <div className="demo-hint">
-            Username login is mapped internally to a private English Loop auth email. Students never need to know that email.
+            Students sign in with Username + 6-digit PIN. The default initial PIN for new accounts is 254912 and can be changed later.
           </div>
 
           {error && <div className="form-error">{error}</div>}
