@@ -10,7 +10,7 @@ export const metadata: Metadata = {
     default: "English Loop — Watch. Listen. Read. Speak. Grow.",
     template: "%s | English Loop",
   },
-  description: "Input-Based & Output-Based English Learning Platform by Yusril Maulana. Explore authentic input, speak, receive teacher feedback, and track progress.",
+  description: "Input-Based & Output-Based English Learning Platform. Learning concept initiated by Yusril Maulana. Explore authentic input, speak, receive teacher feedback, and track progress.",
   applicationName: "English Loop",
   manifest: "/manifest.webmanifest",
   alternates: {
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     url: siteUrl,
     siteName: "English Loop",
     title: "English Loop — Input → Output → Growth",
-    description: "Watch. Listen. Read. Speak. Grow. A teacher-guided English learning platform by Yusril Maulana.",
+    description: "Watch. Listen. Read. Speak. Grow. A teacher-guided English learning concept initiated by Yusril Maulana.",
     images: [
       {
         url: "https://englishloop-beta.vercel.app/brand/english-loop-logo-512.png",
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary",
     title: "English Loop — Input → Output → Growth",
-    description: "Watch. Listen. Read. Speak. Grow. A teacher-guided English learning platform by Yusril Maulana.",
+    description: "Watch. Listen. Read. Speak. Grow. A teacher-guided English learning concept initiated by Yusril Maulana.",
     images: ["https://englishloop-beta.vercel.app/brand/english-loop-logo-512.png"],
   },
   robots: {
