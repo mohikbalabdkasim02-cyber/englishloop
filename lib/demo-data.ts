@@ -11,6 +11,9 @@ export type ContentItem = {
   content_body: string;
   vocabulary_focus: string[];
   content_url?: string | null;
+  thumbnail_url?: string | null;
+  material_type?: "text" | "youtube" | "pdf";
+  storage_path?: string | null;
 };
 
 export type ActivityItem = {
@@ -62,16 +65,18 @@ export const demoContents: ContentItem[] = [
   },
   {
     id: "20000000-0000-0000-0000-000000000003",
-    title: "The Two-Minute Challenge",
-    description: "A mini video script about building confidence by starting small.",
+    title: "Are You Getting Enough Exercise?",
+    description: "A BBC Learning English video used as a trial example of external YouTube input.",
     content_type: "watch",
-    format: "Short video",
+    format: "YouTube",
     cefr_level: "A2",
-    topic: "Confidence",
-    duration_minutes: 3,
-    source: "English Loop Original",
-    content_body: "Imagine you want to speak English confidently, but every long conversation feels scary. Try the two-minute challenge. Choose one simple topic: your favorite food, your weekend, or a movie you watched. Speak for only two minutes. Do not stop every time you make a mistake. Keep going. After you finish, listen to yourself and choose one thing to improve next time. Small practice becomes real confidence when you repeat it.",
-    vocabulary_focus: ["confidently", "challenge", "mistake", "improve", "practice"],
+    topic: "Health & Lifestyle",
+    duration_minutes: 6,
+    source: "BBC Learning English",
+    content_body: "Watch for the main idea and useful vocabulary. You do not need to catch every word before speaking.",
+    vocabulary_focus: ["vigorous", "brisk", "sedentary", "exercise", "routine"],
+    material_type: "youtube",
+    content_url: "https://www.youtube.com/watch?v=iKzpnVWdZ70",
   },
   {
     id: "20000000-0000-0000-0000-000000000004",
@@ -91,7 +96,7 @@ export const demoContents: ContentItem[] = [
 export const demoActivities: ActivityItem[] = [
   { id: "30000000-0000-0000-0000-000000000001", content_id: demoContents[0].id, title: "Retell: The Lost Wallet", instructions: "Read once for meaning, then again for the sequence of events.", speaking_prompt: "Retell the story in your own words. What did Rina find, what did she do, and what do you think about her decision?", min_duration_seconds: 30, max_duration_seconds: 60 },
   { id: "30000000-0000-0000-0000-000000000002", content_id: demoContents[1].id, title: "Explain Your Morning", instructions: "Notice the three suggested habits.", speaking_prompt: "Explain the three habits, then tell us which habit you want to try and why.", min_duration_seconds: 45, max_duration_seconds: 90 },
-  { id: "30000000-0000-0000-0000-000000000003", content_id: demoContents[2].id, title: "Two-Minute Confidence", instructions: "Think about how small practice can build confidence.", speaking_prompt: "Explain the two-minute challenge. Then choose one topic you could use for your own speaking practice.", min_duration_seconds: 45, max_duration_seconds: 120 },
+  { id: "30000000-0000-0000-0000-000000000003", content_id: demoContents[2].id, title: "Exercise Reflection", instructions: "Watch for the main idea and useful lifestyle vocabulary.", speaking_prompt: "Summarize the video in your own words. Are you getting enough exercise? Give one habit you could improve.", min_duration_seconds: 45, max_duration_seconds: 120 },
   { id: "30000000-0000-0000-0000-000000000004", content_id: demoContents[3].id, title: "Stories & Perspective", instructions: "Identify the main idea and one supporting idea.", speaking_prompt: "Summarize the article, then give your opinion: can stories help us understand other people better?", min_duration_seconds: 60, max_duration_seconds: 120 },
 ];
 
