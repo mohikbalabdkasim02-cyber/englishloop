@@ -154,10 +154,13 @@ export default function StudentCreateModal({
               <span>Initial PIN</span>
               <input
                 required
-                minLength={8}
                 type="password"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                minLength={6}
+                maxLength={6}
                 value={form.password}
-                onChange={(event) => setForm({ ...form, password: event.target.value })}
+                onChange={(event) => setForm({ ...form, password: event.target.value.replace(/\D/g, "").slice(0, 6) })}
                 placeholder="6 digit PIN"
               />
             </label>

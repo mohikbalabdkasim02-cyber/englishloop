@@ -27,5 +27,11 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Emit generated lockfile
+        run: |
+          echo "LOCKFILE_START"
+          cat package-lock.json
+          echo "LOCKFILE_END"
+
       - name: Production build
         run: npm run build
