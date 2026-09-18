@@ -1,0 +1,309 @@
+"use client";
+
+import {
+  ArrowRight,
+  BarChart3,
+  BookOpen,
+  Check,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  Compass,
+  Flame,
+  GraduationCap,
+  Headphones,
+  Home,
+  Library,
+  ListChecks,
+  Loader2,
+  LogOut,
+  Menu,
+  MessageSquareText,
+  Mic,
+  Pause,
+  Play,
+  Plus,
+  RotateCcw,
+  Search,
+  Send,
+  Settings,
+  Sparkles,
+  Square,
+  Trash2,
+  Trophy,
+  User,
+  Users,
+  Video,
+  Volume2,
+  X,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getSupabase } from "@/lib/supabase";
+import {
+  demoActivities,
+  demoContents,
+  demoQuestions,
+  demoStudents,
+  demoSubmissions,
+  type ActivityItem,
+  type ContentItem,
+  type QuestionItem,
+} from "@/lib/demo-data";
+
+type Profile = {
+  id: string;
+  name: string;
+  username?: string | null;
+  role: "student" | "teacher" | "admin";
+  class_id?: string | null;
+  cefr_level: string;
+};
+
+type AppMode = "landing" | "student" | "teacher";
+type StudentView = "home" | "explore" | "speak" | "progress" | "profile";
+type TeacherView = "dashboard" | "students" | "content" | "activities" | "submissions" | "progress" | "settings";
+
+type ResponseRow = {
+  id: string;
+  student_id: string;
+  activity_id: string;
+  answers?: Record<string, string>;
+  confidence?: number | null;
+  difficulty?: string | null;
+  reflection_note?: string | null;
+  status: string;
+  submitted_at?: string | null;
+};
+
+type SpeakingRow = {
+  id: string;
+  response_id: string;
+  storage_path: string;
+  duration_seconds: number;
+  created_at?: string;
+};
+
+type FeedbackRow = {
+  id: string;
+  speaking_id: string;
+  comprehension: number;
+  fluency: number;
+  vocabulary: number;
+  pronunciation: number;
+  confidence: number;
+  positive_feedback: string;
+  improvement_feedback: string;
+};
+
+const typeMeta = {
+  watch: { label: "Watch", icon: Video, className: "type-watch" },
+  listen: { label: "Listen", icon: Headphones, className: "type-listen" },
+  read: { label: "Read", icon: BookOpen, className: "type-read" },
+};
+
+function classNames(...values: Array<string | false | null | undefined>) {
+  return values.filter(Boolean).join(" ");
+}
+
+function formatDuration(seconds: number) {
+  const min = Math.floor(seconds / 60);
+  const sec = seconds % 60;
+  return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+function greeting() {
+  const hour = new Date().getHours();
+  if (hour < 11) return "Good morning";
+  if (hour < 15) return "Good afternoon";
+  return "Good evening";
+}
+
+function Brand({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={classNames("brand", compact && "brand-compact")}>
+      <div className="brand-mark" aria-hidden="true">
+        <span />
+        <span />
+      </div>
+      <div>
+        <strong>English Loop</strong>
+        {!compact && <small>Input → Output → Growth</small>}
+      </div>
+    </div>
+  );
+}
+
+function Landing({ onDemo, onLogin }: { onDemo: (role: "student" | "teacher") => void; onLogin: () => void }) {
+  return (
+    <main className="landing-shell">
+      <header className="landing-nav">
+        <Brand />
+        <div className="landing-nav-actions">
+          <button className="btn btn-ghost" onClick={onLogin}>Sign in</button>
+          <button className="btn btn-dark" onClick={() => onDemo("student")}>Try the demo <ArrowRight size={16} /></button>
+        </div>
+      </header>
+
+      <section className="hero">
+        <div className="hero-copy">
+          <div className="eyebrow"><Sparkles size={15} /> Built for real English expression</div>
+          <h1>Learn from English.<br /><span>Speak with English.</span></h1>
+          <p>English Loop turns authentic input into short, repeatable speaking practice — so students do more than understand English. They use it.</p>
+          <div className="hero-actions">
+            <button className="btn btn-primary btn-lg" onClick={() => onDemo("student")}>Try Student Demo <ArrowRight size={18} /></button>
+            <button className="btn btn-soft btn-lg" onClick={() => onDemo("teacher")}>Try Teacher Demo</button>
+          </div>
+          <div className="hero-proof">
+            <div><strong>01</strong><span>Explore</span></div>
+            <i />
+            <div><strong>02</strong><span>Understand</span></div>
+            <i />
+            <div><strong>03</strong><span>Speak</span></div>
+            <i />
+            <div><strong>04</strong><span>Grow</span></div>
+          </div>
+        </div>
+
+        <div className="hero-visual" aria-label="English Loop product preview">
+          <div className="preview-glow" />
+          <div className="phone-frame">
+            <div className="phone-top"><span>9:41</span><span>•••</span></div>
+            <div className="phone-content">
+              <div className="mini-greeting"><span>Today</span><strong>Good morning, Naila!</strong></div>
+              <div className="mini-hero-card">
+                <div className="mini-chip">A2 · Speaking</div>
+                <h3>Your voice gets stronger every time you use it.</h3>
+                <div className="mini-wave"><span /><span /><span /><span /><span /><span /><span /></div>
+                <button><Mic size={15} /> Continue activity</button>
+              </div>
+              <div className="mini-stats">
+                <div><Flame size={17} /><strong>5</strong><span>day streak</span></div>
+                <div><Volume2 size={17} /><strong>12m</strong><span>spoken</span></div>
+              </div>
+              <div className="mini-next">
+                <div className="mini-next-icon"><BookOpen size={18} /></div>
+                <div><small>UP NEXT</small><strong>The Lost Wallet</strong><span>3 min · A1</span></div>
+                <ChevronRight size={18} />
+              </div>
+            </div>
+          </div>
+          <div className="floating-card floating-card-one"><CheckCircle2 size={20} /><div><strong>Input complete</strong><span>Now turn it into your own words.</span></div></div>
+          <div className="floating-card floating-card-two"><Trophy size={20} /><div><strong>+1 speaking</strong><span>Consistency beats perfection.</span></div></div>
+        </div>
+      </section>
+
+      <section className="loop-section">
+        <div className="section-kicker">THE LEARNING LOOP</div>
+        <h2>Input gives students something to say.<br />Output trains them to say it.</h2>
+        <div className="loop-grid">
+          {[
+            ["01", "Explore", "Choose level-appropriate content that feels worth consuming.", Compass],
+            ["02", "Understand", "Capture the main idea, useful words, and personal response.", BookOpen],
+            ["03", "Speak", "Turn comprehension into a 1–2 minute speaking challenge.", Mic],
+            ["04", "Feedback", "Receive focused, constructive teacher feedback.", MessageSquareText],
+            ["05", "Grow", "See speaking minutes, vocabulary, consistency, and progress.", BarChart3],
+          ].map(([num, title, text, Icon]) => {
+            const IconComp = Icon as typeof Compass;
+            return <article className="loop-card" key={title as string}><span>{num as string}</span><IconComp size={23} /><h3>{title as string}</h3><p>{text as string}</p></article>;
+          })}
+        </div>
+      </section>
+
+      <section className="portfolio-strip">
+        <div><small>DESIGNED & DEVELOPED BY</small><strong>Yusril Maulana</strong><span>English Teacher · Learning Experience Builder</span></div>
+        <div className="portfolio-quote">“Speak first.<br />Improve continuously.”</div>
+      </section>
+      <footer className="landing-footer"><Brand compact /><span>Watch. Listen. Read. Speak. Grow.</span><span>English Loop © 2026</span></footer>
+    </main>
+  );
+}
+
+function LoginModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (profile: Profile) => void }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setError("");
+    const supabase = getSupabase();
+    if (!supabase) {
+      setError("Supabase environment is not configured yet. Use a demo account for now.");
+      return;
+    }
+    setBusy(true);
+    const email = username.includes("@") ? username : `${username.trim().toLowerCase()}@englishloop.local`;
+    const { data, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+    if (loginError || !data.user) {
+      setBusy(false);
+      setError(loginError?.message || "Unable to sign in.");
+      return;
+    }
+    const { data: profileData, error: profileError } = await supabase.from("profiles").select("id,name,username,role,class_id,cefr_level").eq("id", data.user.id).single();
+    setBusy(false);
+    if (profileError || !profileData) {
+      setError("Your account is signed in, but the English Loop profile is missing.");
+      return;
+    }
+    onSuccess(profileData as Profile);
+  }
+
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <div className="login-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <button className="icon-btn modal-close" onClick={onClose}><X size={18} /></button>
+        <Brand />
+        <div className="login-copy"><h2>Welcome back.</h2><p>Sign in with your English Loop username and password.</p></div>
+        <form onSubmit={submit} className="stack-form">
+          <label><span>Username</span><input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="e.g. naila" required autoFocus /></label>
+          <label><span>Password</span><input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Your password" required /></label>
+          {error && <div className="form-error">{error}</div>}
+          <button className="btn btn-primary btn-lg full" disabled={busy}>{busy ? <Loader2 className="spin" size={17} /> : <ArrowRight size={17} />} {busy ? "Signing in…" : "Sign in"}</button>
+        </form>
+        <div className="demo-hint"><Sparkles size={16} /><span>No account yet? Close this window and use Student or Teacher Demo.</span></div>
+      </div>
+    </div>
+  );
+}
+
+function Recorder({ maxSeconds, onChange }: { maxSeconds: number; onChange: (blob: Blob | null, seconds: number, url: string | null) => void }) {
+  const [state, setState] = useState<"idle" | "recording" | "paused" | "done">("idle");
+  const [seconds, setSeconds] = useState(0);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+  const secondsRef = useRef(0);
+
+  useEffect(() => {
+    if (state !== "recording") return;
+    const timer = window.setInterval(() => {
+      setSeconds((value) => {
+        const next = Math.min(value + 1, maxSeconds);
+        secondsRef.current = next;
+        if (next >= maxSeconds) window.setTimeout(() => recorderRef.current?.stop(), 0);
+        return next;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [state, maxSeconds]);
+
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+  }, [audioUrl]);
+
+  async function start() {
+    try {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      setAudioUrl(null);
+      setSeconds(0);
+      secondsRef.current = 0;
+      chunksRef.current = [];
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const preferred = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"].find((type) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, preferred ? { mimeType: preferred } : undefined);
+      recorderRef.current =
