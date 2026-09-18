@@ -252,7 +252,7 @@ function Landing({ onDemo, onLogin }: { onDemo: (role: "student" | "teacher") =>
       </section>
 
       <section className="portfolio-strip">
-        <div><small>DESIGNED & DEVELOPED BY</small><strong>Yusril Maulana</strong><span>English Teacher · Learning Experience Builder</span></div>
+        <div><small>CONCEPT & LEARNING DIRECTION BY</small><strong>Yusril Maulana</strong><span>English Teacher · English Loop Initiator</span></div>
         <div className="portfolio-quote">“Speak first.<br />Improve continuously.”</div>
       </section>
       <footer className="landing-footer"><Brand compact /><span>Watch. Listen. Read. Speak. Grow.</span><span>English Loop © 2026</span></footer>
