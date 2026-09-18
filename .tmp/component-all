@@ -306,4 +306,180 @@ function Recorder({ maxSeconds, onChange }: { maxSeconds: number; onChange: (blo
       streamRef.current = stream;
       const preferred = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"].find((type) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type));
       const recorder = new MediaRecorder(stream, preferred ? { mimeType: preferred } : undefined);
-      recorderRef.current =
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data); };
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
+        setState("done");
+        stream.getTracks().forEach((track) => track.stop());
+        onChange(blob, Math.max(secondsRef.current, 1), url);
+      };
+      recorder.start(250);
+      setState("recording");
+    } catch {
+      onChange(null, 0, null);
+      setState("idle");
+      window.alert("Microphone access is needed to record your speaking practice.");
+    }
+  }
+
+  function pauseResume() {
+    const recorder = recorderRef.current;
+    if (!recorder) return;
+    if (state === "recording") { recorder.pause(); setState("paused"); }
+    else if (state === "paused") { recorder.resume(); setState("recording"); }
+  }
+
+  function stop() { recorderRef.current?.stop(); }
+  function reset() {
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    setAudioUrl(null); setSeconds(0); secondsRef.current = 0; setState("idle"); onChange(null, 0, null);
+  }
+
+  return (
+    <div className="recorder-card">
+      <div className={classNames("mic-orb", state === "recording" && "is-recording")}><Mic size={28} /></div>
+      <div className="recorder-time">{formatDuration(seconds)} <span>/ {formatDuration(maxSeconds)}</span></div>
+      <div className="waveform" aria-hidden="true">{Array.from({ length: 24 }).map((_, i) => <span key={i} style={{ height: `${state === "recording" ? 12 + ((i * 13) % 36) : 8 + ((i * 7) % 18)}px` }} />)}</div>
+      <div className="recorder-actions">
+        {state === "idle" && <button className="btn btn-primary" onClick={start}><Mic size={17} /> Start Recording</button>}
+        {(state === "recording" || state === "paused") && <>
+          <button className="btn btn-soft" onClick={pauseResume}>{state === "recording" ? <Pause size={17} /> : <Play size={17} />} {state === "recording" ? "Pause" : "Resume"}</button>
+          <button className="btn btn-dark" onClick={stop}><Square size={15} /> Stop</button>
+        </>}
+        {state === "done" && <button className="btn btn-soft" onClick={reset}><RotateCcw size={16} /> Record Again</button>}
+      </div>
+      {audioUrl && <audio className="audio-player" controls src={audioUrl} />}
+    </div>
+  );
+}
+
+function ActivityExperience({
+  activity,
+  content,
+  questions,
+  onClose,
+  onSubmit,
+}: {
+  activity: ActivityItem;
+  content: ContentItem;
+  questions: QuestionItem[];
+  onClose: () => void;
+  onSubmit: (payload: { answers: Record<string, string>; confidence: number; difficulty: string; note: string; audioBlob: Blob; audioSeconds: number }) => Promise<void>;
+}) {
+  const [step, setStep] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [confidence, setConfidence] = useState(3);
+  const [difficulty, setDifficulty] = useState("medium");
+  const [note, setNote] = useState("");
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioSeconds, setAudioSeconds] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const meta = typeMeta[content.content_type];
+  const Icon = meta.icon;
+  const steps = ["Consume", "Understand", "Speak", "Reflect"];
+
+  async function finish() {
+    if (!audioBlob) return;
+    setBusy(true);
+    try {
+      await onSubmit({ answers, confidence, difficulty, note, audioBlob, audioSeconds });
+      setStep(4);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="activity-overlay">
+      <div className="activity-topbar">
+        <button className="icon-btn" onClick={onClose}><ChevronLeft size={20} /></button>
+        <div className="activity-progress">{steps.map((label, i) => <div key={label} className={classNames("progress-step", i <= step && "active")}><span>{i < step ? <Check size={12} /> : i + 1}</span><small>{label}</small></div>)}</div>
+        <div className="activity-level">{content.cefr_level}</div>
+      </div>
+      <div className="activity-body">
+        {step === 0 && <div className="activity-panel">
+          <div className={classNames("content-hero", meta.className)}><Icon size={25} /><span>{meta.label} · {content.format}</span><div className="content-duration"><Clock3 size={14} /> {content.duration_minutes} min</div></div>
+          <div className="activity-heading"><div className="eyebrow">INPUT</div><h1>{content.title}</h1><p>{content.description}</p></div>
+          <div className="content-reader">
+            <div className="reader-meta"><span>{content.source}</span><span>{content.topic}</span></div>
+            <p>{content.content_body}</p>
+          </div>
+          <div className="notice"><Sparkles size={17} /><span><strong>Before you continue:</strong> focus on the main idea first. You do not need to understand every word.</span></div>
+          <button className="btn btn-primary btn-lg activity-next" onClick={() => setStep(1)}>I’m ready to check my understanding <ArrowRight size={18} /></button>
+        </div>}
+
+        {step === 1 && <div className="activity-panel narrow-panel">
+          <div className="activity-heading"><div className="eyebrow">UNDERSTAND</div><h1>Make meaning before you speak.</h1><p>Short answers are enough. Capture what you understood in your own words.</p></div>
+          <div className="question-list">
+            {questions.map((question, index) => <div className="question-card" key={question.id}>
+              <div className="question-number">{String(index + 1).padStart(2, "0")}</div>
+              <div className="question-main"><label>{question.prompt}</label>
+                {question.kind === "multiple_choice" && question.options ? <div className="choice-list">{question.options.map((option) => <button key={option} onClick={() => setAnswers({ ...answers, [question.id]: option })} className={classNames("choice", answers[question.id] === option && "selected")}><span>{answers[question.id] === option ? <Check size={13} /> : ""}</span>{option}</button>)}</div> :
+                  <textarea value={answers[question.id] || ""} onChange={(e) => setAnswers({ ...answers, [question.id]: e.target.value })} placeholder={question.kind === "vocabulary" ? "e.g. challenge, improve, practice" : "Write a short answer…"} />}
+              </div>
+            </div>)}
+          </div>
+          <button className="btn btn-primary btn-lg activity-next" onClick={() => setStep(2)}>Continue to speaking <Mic size={18} /></button>
+        </div>}
+
+        {step === 2 && <div className="activity-panel narrow-panel">
+          <div className="activity-heading centered"><div className="eyebrow">OUTPUT</div><h1>Your speaking challenge</h1><p className="speaking-prompt">“{activity.speaking_prompt}”</p><div className="duration-pill"><Clock3 size={14} /> Target {formatDuration(activity.min_duration_seconds)}–{formatDuration(activity.max_duration_seconds)}</div></div>
+          <Recorder maxSeconds={activity.max_duration_seconds} onChange={(blob, seconds) => { setAudioBlob(blob); setAudioSeconds(seconds); }} />
+          <p className="speak-note">Do not chase perfect grammar. Keep your idea moving.</p>
+          <button className="btn btn-primary btn-lg activity-next" disabled={!audioBlob} onClick={() => setStep(3)}>Continue to reflection <ArrowRight size={18} /></button>
+        </div>}
+
+        {step === 3 && <div className="activity-panel narrow-panel">
+          <div className="activity-heading"><div className="eyebrow">REFLECT</div><h1>How did that feel?</h1><p>Reflection helps you notice growth that test scores can miss.</p></div>
+          <div className="reflection-card"><label>How confident were you?</label><div className="scale-row">{[1,2,3,4,5].map((n) => <button key={n} className={classNames(confidence === n && "selected")} onClick={() => setConfidence(n)}>{n}</button>)}</div><div className="scale-labels"><span>Not yet</span><span>Very confident</span></div></div>
+          <div className="reflection-card"><label>How difficult was this activity?</label><div className="segmented">{["easy","medium","difficult"].map((item) => <button key={item} className={classNames(difficulty === item && "selected")} onClick={() => setDifficulty(item)}>{item[0].toUpperCase()+item.slice(1)}</button>)}</div></div>
+          <div className="reflection-card"><label>What was difficult? <span>Optional</span></label><textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="I paused when I tried to…" /></div>
+          <button className="btn btn-primary btn-lg activity-next" disabled={busy} onClick={finish}>{busy ? <Loader2 className="spin" size={18} /> : <Send size={18} />} {busy ? "Submitting…" : "Submit speaking"}</button>
+        </div>}
+
+        {step === 4 && <div className="success-panel">
+          <div className="success-orb"><CheckCircle2 size={42} /></div><div className="eyebrow">LOOP COMPLETE</div><h1>You turned input into expression.</h1><p>Your speaking practice has been added to your English journey. Keep the loop moving.</p>
+          <div className="success-stats"><div><strong>{formatDuration(audioSeconds)}</strong><span>speaking time</span></div><div><strong>+1</strong><span>activity complete</span></div><div><strong>{confidence}/5</strong><span>confidence</span></div></div>
+          <button className="btn btn-dark btn-lg" onClick={onClose}>Back to dashboard <ArrowRight size={18} /></button>
+        </div>}
+      </div>
+    </div>
+  );
+}
+
+function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo: boolean; onLogout: () => void }) {
+  const [view, setView] = useState<StudentView>("home");
+  const [contents, setContents] = useState<ContentItem[]>(isDemo ? demoContents : []);
+  const [activities, setActivities] = useState<ActivityItem[]>(isDemo ? demoActivities : []);
+  const [questions, setQuestions] = useState<QuestionItem[]>(isDemo ? demoQuestions : []);
+  const [responses, setResponses] = useState<ResponseRow[]>([]);
+  const [speaking, setSpeaking] = useState<SpeakingRow[]>([]);
+  const [feedback, setFeedback] = useState<FeedbackRow[]>([]);
+  const [vocabulary, setVocabulary] = useState<Array<{ id?: string; word: string; meaning?: string | null }>>(isDemo ? [
+    { word: "challenge", meaning: "tantangan" }, { word: "confident", meaning: "percaya diri" }, { word: "perspective", meaning: "sudut pandang" }, { word: "improve", meaning: "meningkatkan" },
+  ] : []);
+  const [selectedActivity, setSelectedActivity] = useState<ActivityItem | null>(null);
+  const [filter, setFilter] = useState<"all" | "watch" | "listen" | "read">("all");
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(!isDemo);
+
+  const loadData = useCallback(async () => {
+    if (isDemo) return;
+    const supabase = getSupabase();
+    if (!supabase) return;
+    setLoading(true);
+    const [contentRes, activityRes, questionRes, responseRes, speakRes, feedbackRes, vocabRes] = await Promise.all([
+      supabase.from("contents").select("*").eq("is_published", true).order("created_at"),
+      supabase.from("activities").select("*").eq("is_published", true).order("created_at"),
+      supabase.from("activity_questions").select("*").order("sort_order"),
+      supabase.from("responses").select("*").eq("student_id", profile.id).order("created_at", { ascending: false }),
+      supabase.from("speaking_submissions").select("*").order("created_at", { ascending: false }),
+      supabase.from("feedback").select("*"),
+      supabase.from("vocabulary").select("*").eq("student_id", profile.id).order("created_at", { ascending: false }),
+    ]);
+    if (contentRes.data) setContents(contentRes.data as ContentItem[]);
+    if (activityRes.data) setActivities(activityRes.data as ActivityItem[]);
+    if (questionRes.data) setQuestions(questionRes.data as QuestionItem[]);
+    if (responseRes.data) setResponses(responseRes.data as ResponseRow[]);
+    if (speakRes.data) setSpeaking(speakRes.
