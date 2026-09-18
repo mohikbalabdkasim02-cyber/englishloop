@@ -25,9 +25,11 @@ export const metadata: Metadata = {
     description: "Watch. Listen. Read. Speak. Grow. A teacher-guided English learning platform by Yusril Maulana.",
     images: [
       {
-        url: "/opengraph-image",
+        url: "https://englishloop-beta.vercel.app/english-loop-share.png",
+        secureUrl: "https://englishloop-beta.vercel.app/english-loop-share.png",
         width: 1200,
         height: 630,
+        type: "image/png",
         alt: "English Loop — Input to Output English Learning",
       },
     ],
@@ -36,7 +38,11 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "English Loop — Input → Output → Growth",
     description: "Watch. Listen. Read. Speak. Grow. A teacher-guided English learning platform by Yusril Maulana.",
-    images: ["/opengraph-image"],
+    images: ["https://englishloop-beta.vercel.app/english-loop-share.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
   icons: {
     icon: [
