@@ -477,9 +477,7 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
     start_at: new Date().toISOString(),
     deadline: new Date(Date.now() + (index + 2) * 86400000).toISOString(),
   })) : []);
-  const [vocabulary, setVocabulary] = useState<Array<{ id?: string; word: string; meaning?: string | null }>>(isDemo ? [
-    { word: "challenge", meaning: "tantangan" }, { word: "confident", meaning: "percaya diri" }, { word: "perspective", meaning: "sudut pandang" }, { word: "improve", meaning: "meningkatkan" },
-  ] : []);
+  const [vocabulary, setVocabulary] = useState<Array<{ id?: string; word: string; meaning?: string | null }>>([]);
   const [selectedActivity, setSelectedActivity] = useState<ActivityItem | null>(null);
   const [filter, setFilter] = useState<"all" | "watch" | "listen" | "read">("all");
   const [search, setSearch] = useState("");
@@ -513,13 +511,13 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const completed = responses.filter((r) => r.status === "submitted").length + (isDemo ? 7 : 0);
-  const speakingSeconds = speaking.reduce((sum, row) => sum + row.duration_seconds, 0) + (isDemo ? 684 : 0);
+  const completed = responses.filter((r) => r.status === "submitted").length;
+  const speakingSeconds = speaking.reduce((sum, row) => sum + row.duration_seconds, 0);
   const stats = [
     { label: "Activities", value: completed, icon: CheckCircle2 },
-    { label: "Speaking", value: speaking.length + (isDemo ? 8 : 0), icon: Mic },
+    { label: "Speaking", value: speaking.length, icon: Mic },
     { label: "Minutes", value: Math.round(speakingSeconds / 60), icon: Clock3 },
-    { label: "Vocabulary", value: vocabulary.length + (isDemo ? 28 : 0), icon: BookOpen },
+    { label: "Vocabulary", value: vocabulary.length, icon: BookOpen },
   ];
   const assignedActivityIds = useMemo(() => new Set(assignments.map((item) => item.activity_id)), [assignments]);
   const assignedActivities = activities.filter((activity) => assignedActivityIds.has(activity.id));
@@ -638,6 +636,10 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   const [speaking, setSpeaking] = useState<any[]>(isDemo ? demoSubmissions : []);
   const [feedback, setFeedback] = useState<any[]>(isDemo ? [{ speaking_id: "sp1" }] : []);
   const [assignments, setAssignments] = useState<any[]>(isDemo ? demoActivities.slice(0,2).map((activity,index)=>({id:`demo-teacher-assignment-${index}`,activity_id:activity.id,class_id:"c1",deadline:new Date(Date.now()+(index+2)*86400000).toISOString()})) : []);
+  const [questions, setQuestions] = useState<any[]>(isDemo ? demoQuestions : []);
+  const [newClassName, setNewClassName] = useState("");
+  const [newSchoolYear, setNewSchoolYear] = useState("2026/2027");
+  const [systemBusy, setSystemBusy] = useState(false);
   const [selectedSpeaking, setSelectedSpeaking] = useState<any | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(!isDemo);
@@ -652,7 +654,7 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
     if(isDemo) return;
     const supabase=getSupabase(); if(!supabase) return;
     setLoading(true);
-    const [profilesRes, contentRes, activityRes, classRes, responseRes, speakingRes, feedbackRes, assignmentRes]=await Promise.all([
+    const [profilesRes, contentRes, activityRes, classRes, responseRes, speakingRes, feedbackRes, assignmentRes, questionRes]=await Promise.all([
       supabase.from("profiles").select("*").eq("role","student").order("name"),
       supabase.from("contents").select("*").order("created_at",{ascending:false}),
       supabase.from("activities").select("*").order("created_at",{ascending:false}),
@@ -661,6 +663,7 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
       supabase.from("speaking_submissions").select("*").order("created_at",{ascending:false}),
       supabase.from("feedback").select("*").order("created_at",{ascending:false}),
       supabase.from("assignments").select("*").order("created_at",{ascending:false}),
+      supabase.from("activity_questions").select("*").order("sort_order"),
     ]);
     if(profilesRes.data) setStudents(profilesRes.data);
     if(contentRes.data) setContents(contentRes.data);
@@ -670,6 +673,7 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
     if(speakingRes.data) setSpeaking(speakingRes.data);
     if(feedbackRes.data) setFeedback(feedbackRes.data);
     if(assignmentRes.data) setAssignments(assignmentRes.data);
+    if(questionRes.data) setQuestions(questionRes.data);
     setLoading(false);
   },[isDemo]);
   useEffect(()=>{loadTeacher()},[loadTeacher]);
@@ -678,11 +682,26 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   const responseMap=useMemo(()=>Object.fromEntries(responses.map((r:any)=>[r.id,r])),[responses]);
   const studentMap=useMemo(()=>Object.fromEntries(students.map((s:any)=>[s.id,s])),[students]);
   const activityMap=useMemo(()=>Object.fromEntries(activities.map((a:any)=>[a.id,a])),[activities]);
+  const questionMap=useMemo(()=>Object.fromEntries(questions.map((q:any)=>[q.id,q])),[questions]);
 
   function submissionMeta(item:any){
     if(isDemo) return item;
     const response=responseMap[item.response_id];
-    return { ...item, student: studentMap[response?.student_id]?.name || "Student", activity: activityMap[response?.activity_id]?.title || "Activity", feedback: feedback.some((f:any)=>f.speaking_id===item.id) };
+    const answerItems=Object.entries(response?.answers||{}).map(([questionId,value])=>({
+      id:questionId,
+      prompt:questionMap[questionId]?.prompt || "Student response",
+      value:String(value||"")
+    })).filter((row:any)=>row.value.trim());
+    return {
+      ...item,
+      student: studentMap[response?.student_id]?.name || "Student",
+      activity: activityMap[response?.activity_id]?.title || "Activity",
+      feedback: feedback.some((f:any)=>f.speaking_id===item.id),
+      answers: answerItems,
+      reflection_note: response?.reflection_note || "",
+      confidence: response?.confidence || null,
+      difficulty: response?.difficulty || null,
+    };
   }
 
   async function openSubmission(item:any){
@@ -691,6 +710,17 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
     const supabase=getSupabase(); if(!supabase) return;
     const {data}=await supabase.storage.from("speaking-audio").createSignedUrl(item.storage_path,600);
     if(data?.signedUrl) setAudioUrl(data.signedUrl);
+  }
+
+  function openMaterialBuilder(materialType:"text"|"youtube"|"pdf"){
+    setBuilder((current)=>({
+      ...current,
+      materialType,
+      type: materialType==="youtube" ? "watch" : materialType==="pdf" ? "read" : current.type,
+      youtubeUrl: materialType==="youtube" ? current.youtubeUrl : "",
+    }));
+    setPdfFile(null);
+    setBuilderOpen(true);
   }
 
   async function createActivity(e:React.FormEvent){
@@ -797,6 +827,46 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
     await loadTeacher();
   }
 
+  async function createClass(e:React.FormEvent){
+    e.preventDefault();
+    const name=newClassName.trim();
+    if(!name)return;
+    if(isDemo){
+      setClasses((old:any[])=>[...old,{id:`demo-class-${Date.now()}`,name,school_year:newSchoolYear.trim()||null}].sort((a,b)=>a.name.localeCompare(b.name)));
+      setNewClassName("");
+      return;
+    }
+    const supabase=getSupabase();if(!supabase)return;
+    setSystemBusy(true);
+    const {error}=await supabase.from("classes").insert({name,school_year:newSchoolYear.trim()||null});
+    setSystemBusy(false);
+    if(error){window.alert(error.message);return;}
+    setNewClassName("");await loadTeacher();
+  }
+
+  async function deleteClass(item:any){
+    if(!window.confirm(`Delete class ${item.name}? Students assigned to it should be moved first.`))return;
+    if(isDemo){setClasses((old:any[])=>old.filter((c:any)=>c.id!==item.id));return;}
+    const supabase=getSupabase();if(!supabase)return;
+    const {error}=await supabase.from("classes").delete().eq("id",item.id);
+    if(error){window.alert("Class cannot be deleted while it is still used by students or assignments.");return;}
+    await loadTeacher();
+  }
+
+  async function clearStudentTrialData(){
+    if(!window.confirm("Clear ALL student accounts, responses, recordings, vocabulary, and feedback? Materials and classes will be kept."))return;
+    if(isDemo){
+      setStudents([]);setResponses([]);setSpeaking([]);setFeedback([]);
+      return;
+    }
+    const supabase=getSupabase();if(!supabase)return;
+    setSystemBusy(true);
+    const {data,error}=await supabase.functions.invoke("admin-create-student",{body:{action:"clear_trial_data"}});
+    setSystemBusy(false);
+    if(error||!data?.ok){window.alert(data?.error||error?.message||"Could not clear trial data.");return;}
+    await loadTeacher();
+  }
+
   const navItems:[TeacherView,string,typeof Home][]=[
     ["dashboard","Dashboard",Home],["students","Students",Users],["content","Content",Library],["activities","Activities",ListChecks],["submissions","Submissions",Mic],["progress","Progress",BarChart3],["settings","Settings",Settings]
   ];
@@ -834,18 +904,56 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
           <div className="activity-admin-list">{activities.map((a:any)=>{const c=contents.find((x:any)=>x.id===a.content_id); const assignment=assignments.find((item:any)=>item.activity_id===a.id); const assignedClass=assignment?.class_id?classes.find((item:any)=>item.id===assignment.class_id)?.name:null; return <article key={a.id}><div className="activity-admin-index">{String(activities.indexOf(a)+1).padStart(2,"0")}</div><div><div className="content-tags"><span>{c?.cefr_level||"—"}</span><span>{c?.content_type||"input"}</span><span>{formatDuration(a.min_duration_seconds)}–{formatDuration(a.max_duration_seconds)}</span></div><h3>{a.title}</h3><p>“{a.speaking_prompt}”</p></div><div className="activity-admin-right"><div className="pair-badge"><span>INPUT</span><ArrowRight size={14}/><span>OUTPUT</span></div><small>{assignedClass?`Assigned · ${assignedClass}`:"Open practice"}</small>{assignment?.deadline&&<small>Due {new Date(assignment.deadline).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</small>}</div></article>})}{!activities.length&&<div className="empty-state"><ListChecks size={28}/><h3>No activities yet</h3><p>Build the first input-to-output loop for your class.</p></div>}</div>
         </div>}
 
-        {view==="submissions"&&<div className="teacher-page"><div className="teacher-page-head"><div><div className="eyebrow">SUBMISSIONS</div><h1>Listen for growth, not perfection.</h1><p>Give one clear strength and one useful next step.</p></div><div className="pending-pill">{pending} need feedback</div></div><div className="submission-card-list">{speaking.map((row:any)=>{const meta=submissionMeta(row);return <button key={row.id} className="submission-card" onClick={()=>openSubmission(row)}><div className="submission-avatar">{meta.student.charAt(0)}</div><div className="submission-main"><strong>{meta.student}</strong><span>{meta.activity}</span></div><div><small>DURATION</small><strong>{formatDuration(meta.duration_seconds)}</strong></div><div><small>FEEDBACK</small><span className={meta.feedback?"status-done":"status-pending"}>{meta.feedback?"Done":"Pending"}</span></div><ChevronRight size={18}/></button>})}{!speaking.length&&<div className="empty-state"><Mic size={28}/><h3>No speaking yet</h3><p>Student submissions will appear here after they complete a learning loop.</p></div>}</div></div>}
+        {view==="submissions"&&<div className="teacher-page">
+          <div className="teacher-page-head"><div><div className="eyebrow">SUBMISSIONS & RECORDINGS</div><h1>Listen first. Then assess.</h1><p>Every real student recording can be played here. Open Review to see their written answers and score the speaking manually.</p></div><div className="pending-pill">{pending} need feedback</div></div>
+          <div className="submission-review-list">
+            {speaking.map((row:any)=>{const meta=submissionMeta(row);return <article key={row.id} className="submission-review-card">
+              <div className="submission-review-head"><div className="submission-avatar">{meta.student.charAt(0)}</div><div><strong>{meta.student}</strong><span>{meta.activity}</span></div><div className="submission-review-meta"><span>{formatDuration(meta.duration_seconds)}</span><b className={meta.feedback?"status-done":"status-pending"}>{meta.feedback?"Feedback saved":"Needs review"}</b></div></div>
+              <PrivateAudioPlayer storagePath={row.storage_path} isDemo={isDemo}/>
+              <div className="submission-preview-line"><span>{meta.answers?.length||0} written answers</span>{meta.reflection_note&&<span>Reflection included</span>}</div>
+              <button className="btn btn-dark submission-review-btn" onClick={()=>openSubmission(row)}>Open answers & assessment <ChevronRight size={15}/></button>
+            </article>})}
+            {!speaking.length&&<div className="empty-state"><Mic size={28}/><h3>No student recordings</h3><p>The old demo recordings have been removed. Real submissions will appear here after a student records and submits an activity.</p></div>}
+          </div>
+        </div>}
 
         {view==="progress"&&<div className="teacher-page"><div className="teacher-page-head"><div><div className="eyebrow">CLASS PROGRESS</div><h1>Is the class using English?</h1><p>The main metric is weekly speaking practice — not login count.</p></div></div><div className="metric-hero"><div><small>MAIN PRODUCT METRIC</small><h2>Weekly Speaking Practice</h2><p>How much active English expression is happening across the class?</p></div><div><strong>{isDemo?"54.4":(speaking.reduce((n:number,s:any)=>n+s.duration_seconds,0)/60).toFixed(1)}</strong><span>total minutes</span></div></div><div className="progress-bars-card"><div className="panel-title"><div><h3>Speaking practice by student</h3><p>Minutes submitted in English Loop.</p></div></div>{students.slice(0,8).map((s:any)=>{const mins=isDemo?s.speakingMinutes:speaking.filter((sp:any)=>responseMap[sp.response_id]?.student_id===s.id).reduce((sum:number,sp:any)=>sum+sp.duration_seconds,0)/60;const max=isDemo?20:Math.max(10,...students.map((st:any)=>speaking.filter((sp:any)=>responseMap[sp.response_id]?.student_id===st.id).reduce((sum:number,sp:any)=>sum+sp.duration_seconds,0)/60));return <div className="student-progress-row" key={s.id}><span>{s.name}</span><i><b style={{width:`${Math.min(100,(mins/max)*100)}%`}}/></i><strong>{Number(mins).toFixed(1)}m</strong></div>})}</div></div>}
 
-        {view==="settings"&&<div className="teacher-page">
-          <div className="teacher-page-head"><div><div className="eyebrow">SYSTEM MANAGEMENT</div><h1>English Loop portfolio workspace.</h1><p>Everything needed for a realistic classroom trial, without automated scoring.</p></div></div>
-          <div className="settings-grid">
-            <section className="settings-card"><div className="settings-icon"><Library size={20}/></div><div><strong>Material management</strong><p>Admin can publish text, YouTube links, or private PDF learning materials and pair them with speaking tasks.</p></div></section>
-            <section className="settings-card"><div className="settings-icon"><Users size={20}/></div><div><strong>Student management</strong><p>Create students, reset PIN access, assign classes, and remove trial accounts from the same workspace.</p></div></section>
-            <section className="settings-card"><div className="settings-icon"><Mic size={20}/></div><div><strong>Manual listening & assessment</strong><p>Student recordings stay private. The teacher listens first, then scores the rubric manually. No AI auto-grading is used.</p></div></section>
-            <section className="settings-card rubric-settings-card"><div className="settings-icon"><ListChecks size={20}/></div><div><strong>{RUBRIC_NAME}</strong><p>Five equally weighted classroom criteria: Task Fulfilment, Fluency & Coherence, Grammar, Vocabulary, and Pronunciation/Intelligibility. The 0–100 score is a classroom summary, not a certified CEFR level.</p></div></section>
-          </div>
+        {view==="settings"&&<div className="teacher-page system-management-page">
+          <div className="teacher-page-head"><div><div className="eyebrow">ADMIN · SYSTEM MANAGEMENT</div><h1>Control English Loop from one place.</h1><p>Materials, YouTube, PDF, students, PINs, classes, recordings, and trial data are managed here.</p></div></div>
+
+          <section className="system-section">
+            <div className="system-section-head"><div><span>01</span><div><h2>Learning materials</h2><p>Choose exactly what you want to add. YouTube and PDF are no longer hidden inside the generic builder.</p></div></div><button className="text-btn" onClick={()=>setView("content")}>Open full library <ArrowRight size={14}/></button></div>
+            <div className="material-action-grid">
+              <button className="material-action youtube" onClick={()=>openMaterialBuilder("youtube")}><Video size={24}/><strong>Add YouTube material</strong><span>Paste a YouTube URL. Students get an embedded preview plus Open on YouTube.</span><b>Paste YouTube link <ArrowRight size={14}/></b></button>
+              <button className="material-action pdf" onClick={()=>openMaterialBuilder("pdf")}><BookOpen size={24}/><strong>Upload PDF material</strong><span>Upload a PDF up to 25 MB. It stays private and students receive signed access.</span><b>Choose PDF file <ArrowRight size={14}/></b></button>
+              <button className="material-action text" onClick={()=>openMaterialBuilder("text")}><Library size={24}/><strong>Create text material</strong><span>Write or paste a reading, transcript, teacher notes, or short learning input.</span><b>Create text input <ArrowRight size={14}/></b></button>
+            </div>
+            <div className="system-mini-list">{contents.slice(0,5).map((c:any)=><div key={c.id}><div><strong>{c.title}</strong><span>{(c.material_type||"text").toUpperCase()} · {c.cefr_level} · {c.topic}</span></div><button className="icon-btn danger" onClick={()=>deleteContent(c.id)}><Trash2 size={14}/></button></div>)}{!contents.length&&<div className="system-empty">No materials yet.</div>}</div>
+          </section>
+
+          <section className="system-section">
+            <div className="system-section-head"><div><span>02</span><div><h2>Students & PIN access</h2><p>Add students, reset their 6-digit PIN, or remove trial accounts.</p></div></div><button className="btn btn-primary" onClick={()=>setStudentCreatorOpen(true)}><Plus size={16}/> Add student</button></div>
+            <div className="system-student-list">
+              {students.map((s:any)=><div className="system-student-row" key={s.id}><div className="table-avatar">{s.name.charAt(0)}</div><div><strong>{s.name}</strong><span>@{s.username||"student"} · {classes.find((c:any)=>c.id===s.class_id)?.name||s.class_name||"No class"} · {s.cefr_level}</span></div><button className="student-reset-btn" onClick={()=>setPinStudent(s)}>Reset PIN</button><button className="student-delete-btn" onClick={()=>deleteStudent(s)}><Trash2 size={14}/></button></div>)}
+              {!students.length&&<div className="system-empty">No students. Add your own trial student when you are ready.</div>}
+            </div>
+          </section>
+
+          <section className="system-section">
+            <div className="system-section-head"><div><span>03</span><div><h2>Classes</h2><p>Create and remove the classes used for student grouping and assignments.</p></div></div></div>
+            <form className="class-create-form" onSubmit={createClass}><input value={newClassName} onChange={(e)=>setNewClassName(e.target.value)} placeholder="Class name, e.g. 10A" required/><input value={newSchoolYear} onChange={(e)=>setNewSchoolYear(e.target.value)} placeholder="School year"/><button className="btn btn-dark" disabled={systemBusy}><Plus size={15}/> Add class</button></form>
+            <div className="class-chip-list">{classes.map((c:any)=><div className="class-manage-chip" key={c.id}><span><strong>{c.name}</strong><small>{c.school_year||"No school year"}</small></span><button onClick={()=>deleteClass(c)}><Trash2 size={13}/></button></div>)}{!classes.length&&<div className="system-empty">No classes yet.</div>}</div>
+          </section>
+
+          <section className="system-section">
+            <div className="system-section-head"><div><span>04</span><div><h2>Recordings & assessment</h2><p>Recordings are private. Teacher listens manually, sees student answers, then scores the CEFR-informed classroom rubric.</p></div></div><button className="btn btn-soft" onClick={()=>setView("submissions")}><Mic size={15}/> Open {speaking.length} recordings</button></div>
+            <div className="system-stats-row"><div><strong>{speaking.length}</strong><span>recordings</span></div><div><strong>{pending}</strong><span>need feedback</span></div><div><strong>{feedback.length}</strong><span>scored</span></div></div>
+          </section>
+
+          <section className="system-section danger-zone">
+            <div className="system-section-head"><div><span>05</span><div><h2>Trial data reset</h2><p>Deletes all student accounts, responses, recordings, vocabulary, and feedback. Materials and classes stay intact.</p></div></div><button className="btn danger-button" disabled={systemBusy} onClick={clearStudentTrialData}><Trash2 size={15}/> Clear student trial data</button></div>
+          </section>
         </div>}
       </>}
     </main>
@@ -884,6 +992,26 @@ function TeacherShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   </div>
 }
 
+function PrivateAudioPlayer({storagePath,isDemo}:{storagePath:string;isDemo:boolean}){
+  const [url,setUrl]=useState<string|null>(null);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    if(isDemo){setError("Demo recordings were removed. Use a real student submission to test playback.");return;}
+    if(!storagePath)return;
+    const supabase=getSupabase();if(!supabase)return;
+    let active=true;
+    supabase.storage.from("speaking-audio").createSignedUrl(storagePath,900).then(({data,error})=>{
+      if(!active)return;
+      if(error||!data?.signedUrl)setError(error?.message||"Audio unavailable.");
+      else setUrl(data.signedUrl);
+    });
+    return()=>{active=false};
+  },[storagePath,isDemo]);
+  if(error)return <div className="inline-audio-error">{error}</div>;
+  if(!url)return <div className="inline-audio-loading"><Loader2 className="spin" size={15}/> Preparing recording…</div>;
+  return <audio className="inline-audio-player" controls preload="metadata" src={url}/>;
+}
+
 function FeedbackDrawer({submission,audioUrl,isDemo,teacherId,existing,onClose,onSaved}:{submission:any;audioUrl:string|null;isDemo:boolean;teacherId:string;existing:any;onClose:()=>void;onSaved:(row:any)=>Promise<void>}){
   const [scores,setScores]=useState<Record<string,number>>({task_fulfilment:existing?.task_fulfilment||existing?.comprehension||4,fluency:existing?.fluency||3,grammar:existing?.grammar||existing?.confidence||3,vocabulary:existing?.vocabulary||3,pronunciation:existing?.pronunciation||3});
   const [positive,setPositive]=useState(existing?.positive_feedback||"");
@@ -903,6 +1031,12 @@ function FeedbackDrawer({submission,audioUrl,isDemo,teacherId,existing,onClose,o
     <div className="drawer-head"><div><div className="eyebrow">MANUAL SPEAKING ASSESSMENT</div><h2>{submission.student}</h2><p>{submission.activity} · {formatDuration(submission.duration_seconds)}</p></div><button className="icon-btn" onClick={onClose}><X size={19}/></button></div>
     <div className="drawer-scroll">
       <section className="listen-card"><div><div className="listen-icon"><Volume2 size={22}/></div><div><strong>Listen before scoring</strong><span>{isDemo?"Demo mode · sample playback area":"Private audio · teacher-only signed access"}</span></div></div>{audioUrl?<audio controls src={audioUrl}/>:isDemo?<div className="demo-audio"><Play size={16}/><span>Real student audio plays here before you score it.</span></div>:<div className="demo-audio"><Loader2 className="spin" size={16}/><span>Preparing private audio…</span></div>}</section>
+      <section className="student-answer-review">
+        <div className="answer-review-head"><div><span>STUDENT RESPONSES</span><strong>What the student submitted</strong></div><small>{submission.answers?.length||0} answers</small></div>
+        {submission.answers?.length?submission.answers.map((item:any)=><div className="answer-review-item" key={item.id}><span>{item.prompt}</span><p>{item.value}</p></div>):<div className="answer-review-empty">No written comprehension answers were submitted with this recording.</div>}
+        {submission.reflection_note&&<div className="answer-review-item reflection"><span>Student reflection</span><p>{submission.reflection_note}</p></div>}
+        <div className="answer-review-meta">{submission.confidence&&<span>Confidence: {submission.confidence}/5</span>}{submission.difficulty&&<span>Difficulty: {submission.difficulty}</span>}</div>
+      </section>
       <section className="rubric-overview"><div><span>CLASSROOM SCORE</span><strong>{overall}</strong><small>/ 100 · {performance}</small></div><p>{RUBRIC_NAME}. Teacher judgement only; this is not an automated or certified CEFR result.</p></section>
       <section className="assessment"><h3>Speaking rubric</h3><p>Choose 1–5 for each criterion after listening.</p>{SPEAKING_RUBRIC.map((criterion)=><div className="rubric-row" key={criterion.key}><div className="rubric-label"><strong>{criterion.label}</strong><span>{criterion.description}</span></div><div className="rubric-score-buttons">{[1,2,3,4,5].map((n)=><button key={n} className={scores[criterion.key]===n?"selected":""} onClick={()=>setScores({...scores,[criterion.key]:n})}>{n}</button>)}</div><p className="rubric-descriptor">{criterion.descriptors[scores[criterion.key] as 1|2|3|4|5]}</p></div>)}</section>
       <section className="feedback-writing"><label><span>What the student did well</span><textarea value={positive} onChange={(e)=>setPositive(e.target.value)} placeholder="Point to one clear strength you heard."/></label><label><span>One next step</span><textarea value={improve} onChange={(e)=>setImprove(e.target.value)} placeholder="Give one concrete improvement for the next recording."/></label></section>

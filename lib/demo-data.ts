@@ -114,15 +114,6 @@ export const demoQuestions: QuestionItem[] = [
   { id: "q11", activity_id: demoActivities[3].id, kind: "reflection", prompt: "Do stories help people understand different perspectives? Why?", sort_order: 3 },
 ];
 
-export const demoStudents = [
-  { id: "s1", name: "Naila Putri", username: "naila", cefr_level: "A2", class_name: "10A", completed: 8, speakingMinutes: 12.4, vocabulary: 34, streak: 5 },
-  { id: "s2", name: "Ahmad Fikri", username: "ahmad", cefr_level: "A2", class_name: "10A", completed: 9, speakingMinutes: 15.2, vocabulary: 41, streak: 7 },
-  { id: "s3", name: "Rafi Akbar", username: "rafi", cefr_level: "A1", class_name: "10A", completed: 6, speakingMinutes: 8.7, vocabulary: 26, streak: 3 },
-  { id: "s4", name: "Salwa Rahma", username: "salwa", cefr_level: "B1", class_name: "10A", completed: 10, speakingMinutes: 18.1, vocabulary: 48, streak: 9 },
-];
+export const demoStudents: Array<{ id:string; name:string; username:string; cefr_level:string; class_name:string; completed:number; speakingMinutes:number; vocabulary:number; streak:number }> = [];
 
-export const demoSubmissions = [
-  { id: "sp1", student_id: "s2", student: "Ahmad Fikri", activity: "Two-Minute Confidence", duration_seconds: 103, created_at: "2026-09-18T00:30:00Z", feedback: true },
-  { id: "sp2", student_id: "s1", student: "Naila Putri", activity: "Stories & Perspective", duration_seconds: 118, created_at: "2026-09-18T00:10:00Z", feedback: false },
-  { id: "sp3", student_id: "s4", student: "Salwa Rahma", activity: "Explain Your Morning", duration_seconds: 87, created_at: "2026-09-17T23:40:00Z", feedback: false },
-];
+export const demoSubmissions: Array<{ id:string; student_id?:string; student:string; activity:string; duration_seconds:number; created_at:string; feedback:boolean }> = [];

@@ -14,6 +14,22 @@ Deno.serve(async(req:Request)=>{
  const admin=createClient(supabaseUrl,secretKey,{auth:{persistSession:false,autoRefreshToken:false}});const action=String(body.action??"create_student");
  if(action==="reset_pin"){const studentId=String(body.student_id??"");const pin=String(body.pin??"");if(!studentId)return json({error:"Student is required."},400);if(!/^\d{6}$/.test(pin))return json({error:"PIN must contain exactly 6 digits."},400);const {data:target,error:targetError}=await admin.from("profiles").select("id,role").eq("id",studentId).single();if(targetError||!target||target.role!=="student")return json({error:"Student account not found."},404);const {error:updateError}=await admin.auth.admin.updateUserById(studentId,{password:pin});if(updateError)return json({error:updateError.message||"Could not reset PIN."},400);return json({ok:true})}
  if(action==="delete_student"){const studentId=String(body.student_id??"");if(!studentId)return json({error:"Student is required."},400);const {data:target,error:targetError}=await admin.from("profiles").select("id,role").eq("id",studentId).single();if(targetError||!target||target.role!=="student")return json({error:"Student account not found."},404);const {error:deleteError}=await admin.auth.admin.deleteUser(studentId);if(deleteError)return json({error:deleteError.message||"Could not remove student."},400);return json({ok:true})}
+ if(action==="clear_trial_data"){
+   const {data:studentProfiles,error:profileListError}=await admin.from("profiles").select("id").eq("role","student");
+   if(profileListError)return json({error:profileListError.message},500);
+   const {data:audioObjects,error:audioListError}=await admin.schema("storage").from("objects").select("name").eq("bucket_id","speaking-audio");
+   if(!audioListError&&audioObjects?.length){
+     const paths=audioObjects.map((item:{name:string})=>item.name);
+     for(let i=0;i<paths.length;i+=100){await admin.storage.from("speaking-audio").remove(paths.slice(i,i+100));}
+   }
+   for(const student of studentProfiles||[]){
+     const {error:deleteUserError}=await admin.auth.admin.deleteUser(student.id);
+     if(deleteUserError)return json({error:deleteUserError.message||"Could not delete a student account."},500);
+   }
+   await admin.from("responses").delete().neq("id","00000000-0000-0000-0000-000000000000");
+   await admin.from("vocabulary").delete().neq("id","00000000-0000-0000-0000-000000000000");
+   return json({ok:true,students_deleted:studentProfiles?.length||0,audio_deleted:audioObjects?.length||0});
+ }
  if(action!=="create_student")return json({error:"Unsupported action."},400);
  const name=String(body.name??"").trim();const username=String(body.username??"").trim().toLowerCase();const pin=String(body.password??body.pin??"");const classId=body.class_id?String(body.class_id):null;const level=String(body.cefr_level??"A1").toUpperCase();
  if(name.length<2)return json({error:"Student name is required."},400);if(!/^[a-z0-9._-]{3,32}$/.test(username))return json({error:"Invalid username."},400);if(!/^\d{6}$/.test(pin))return json({error:"PIN must contain exactly 6 digits."},400);if(!["A1","A2","B1","B2"].includes(level))return json({error:"Invalid CEFR level."},400);
