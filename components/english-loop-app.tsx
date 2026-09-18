@@ -434,7 +434,7 @@ function ActivityExperience({
           <div className="activity-heading"><div className="eyebrow">REFLECT</div><h1>How did that feel?</h1><p>Reflection helps you notice growth that test scores can miss.</p></div>
           <div className="reflection-card"><label>How confident were you?</label><div className="scale-row">{[1,2,3,4,5].map((n) => <button key={n} className={classNames(confidence === n && "selected")} onClick={() => setConfidence(n)}>{n}</button>)}</div><div className="scale-labels"><span>Not yet</span><span>Very confident</span></div></div>
           <div className="reflection-card"><label>How difficult was this activity?</label><div className="segmented">{["easy","medium","difficult"].map((item) => <button key={item} className={classNames(difficulty === item && "selected")} onClick={() => setDifficulty(item)}>{item[0].toUpperCase()+item.slice(1)}</button>)}</div></div>
-          <div className="reflection-card"><label>What was difficult? <span>Optional</span></label><textarea value={note} onChange={(e)=>setNote(e.target.value)} placeholder="I paused when I tried to…" /></div>
+          <div className="reflection-card"><label>What was difficult? <span>Optional</span></label><textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="I paused when I tried to…" /></div>
           <button className="btn btn-primary btn-lg activity-next" disabled={busy} onClick={finish}>{busy ? <Loader2 className="spin" size={18} /> : <Send size={18} />} {busy ? "Submitting…" : "Submit speaking"}</button>
         </div>}
 
