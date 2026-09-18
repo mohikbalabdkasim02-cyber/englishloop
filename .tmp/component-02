@@ -1,0 +1,118 @@
+  <div className="floating-card floating-card-two"><Trophy size={20} /><div><strong>+1 speaking</strong><span>Consistency beats perfection.</span></div></div>
+        </div>
+      </section>
+
+      <section className="loop-section">
+        <div className="section-kicker">THE LEARNING LOOP</div>
+        <h2>Input gives students something to say.<br />Output trains them to say it.</h2>
+        <div className="loop-grid">
+          {[
+            ["01", "Explore", "Choose level-appropriate content that feels worth consuming.", Compass],
+            ["02", "Understand", "Capture the main idea, useful words, and personal response.", BookOpen],
+            ["03", "Speak", "Turn comprehension into a 1–2 minute speaking challenge.", Mic],
+            ["04", "Feedback", "Receive focused, constructive teacher feedback.", MessageSquareText],
+            ["05", "Grow", "See speaking minutes, vocabulary, consistency, and progress.", BarChart3],
+          ].map(([num, title, text, Icon]) => {
+            const IconComp = Icon as typeof Compass;
+            return <article className="loop-card" key={title as string}><span>{num as string}</span><IconComp size={23} /><h3>{title as string}</h3><p>{text as string}</p></article>;
+          })}
+        </div>
+      </section>
+
+      <section className="portfolio-strip">
+        <div><small>DESIGNED & DEVELOPED BY</small><strong>Yusril Maulana</strong><span>English Teacher · Learning Experience Builder</span></div>
+        <div className="portfolio-quote">“Speak first.<br />Improve continuously.”</div>
+      </section>
+      <footer className="landing-footer"><Brand compact /><span>Watch. Listen. Read. Speak. Grow.</span><span>English Loop © 2026</span></footer>
+    </main>
+  );
+}
+
+function LoginModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (profile: Profile) => void }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setError("");
+    const supabase = getSupabase();
+    if (!supabase) {
+      setError("Supabase environment is not configured yet. Use a demo account for now.");
+      return;
+    }
+    setBusy(true);
+    const email = username.includes("@") ? username : `${username.trim().toLowerCase()}@englishloop.local`;
+    const { data, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+    if (loginError || !data.user) {
+      setBusy(false);
+      setError(loginError?.message || "Unable to sign in.");
+      return;
+    }
+    const { data: profileData, error: profileError } = await supabase.from("profiles").select("id,name,username,role,class_id,cefr_level").eq("id", data.user.id).single();
+    setBusy(false);
+    if (profileError || !profileData) {
+      setError("Your account is signed in, but the English Loop profile is missing.");
+      return;
+    }
+    onSuccess(profileData as Profile);
+  }
+
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <div className="login-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <button className="icon-btn modal-close" onClick={onClose}><X size={18} /></button>
+        <Brand />
+        <div className="login-copy"><h2>Welcome back.</h2><p>Sign in with your English Loop username and password.</p></div>
+        <form onSubmit={submit} className="stack-form">
+          <label><span>Username</span><input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="e.g. naila" required autoFocus /></label>
+          <label><span>Password</span><input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Your password" required /></label>
+          {error && <div className="form-error">{error}</div>}
+          <button className="btn btn-primary btn-lg full" disabled={busy}>{busy ? <Loader2 className="spin" size={17} /> : <ArrowRight size={17} />} {busy ? "Signing in…" : "Sign in"}</button>
+        </form>
+        <div className="demo-hint"><Sparkles size={16} /><span>No account yet? Close this window and use Student or Teacher Demo.</span></div>
+      </div>
+    </div>
+  );
+}
+
+function Recorder({ maxSeconds, onChange }: { maxSeconds: number; onChange: (blob: Blob | null, seconds: number, url: string | null) => void }) {
+  const [state, setState] = useState<"idle" | "recording" | "paused" | "done">("idle");
+  const [seconds, setSeconds] = useState(0);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+  const secondsRef = useRef(0);
+
+  useEffect(() => {
+    if (state !== "recording") return;
+    const timer = window.setInterval(() => {
+      setSeconds((value) => {
+        const next = Math.min(value + 1, maxSeconds);
+        secondsRef.current = next;
+        if (next >= maxSeconds) window.setTimeout(() => recorderRef.current?.stop(), 0);
+        return next;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [state, maxSeconds]);
+
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+  }, [audioUrl]);
+
+  async function start() {
+    try {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      setAudioUrl(null);
+      setSeconds(0);
+      secondsRef.current = 0;
+      chunksRef.current = [];
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const preferred = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"].find((type) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, preferred ? { mimeType: preferred } : undefined);
+      recorderRef.current =
