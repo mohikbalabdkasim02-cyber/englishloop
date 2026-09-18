@@ -151,14 +151,14 @@ function Brand({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function Landing({ onDemo, onLogin }: { onDemo: (role: "student" | "teacher") => void; onLogin: () => void }) {
+function Landing({ onDemo, onLogin, onSetup }: { onDemo: (role: "student" | "teacher") => void; onLogin: () => void; onSetup: () => void }) {
   return (
     <main className="landing-shell">
       <header className="landing-nav">
         <Brand />
         <div className="landing-nav-actions">
           <button className="btn btn-ghost" onClick={onLogin}>Sign in</button>
-          <button className="btn btn-dark" onClick={() => onDemo("student")}>Try the demo <ArrowRight size={16} /></button>
+          <button className="btn btn-dark" onClick={onSetup}>Set up real trial <ArrowRight size={16} /></button>
         </div>
       </header>
 
@@ -168,8 +168,9 @@ function Landing({ onDemo, onLogin }: { onDemo: (role: "student" | "teacher") =>
           <h1>Learn from English.<br /><span>Speak with English.</span></h1>
           <p>English Loop turns authentic input into short, repeatable speaking practice — so students do more than understand English. They use it.</p>
           <div className="hero-actions">
-            <button className="btn btn-primary btn-lg" onClick={() => onDemo("student")}>Try Student Demo <ArrowRight size={18} /></button>
-            <button className="btn btn-soft btn-lg" onClick={() => onDemo("teacher")}>Try Teacher Demo</button>
+            <button className="btn btn-primary btn-lg" onClick={onSetup}>Set up real trial <ArrowRight size={18} /></button>
+            <button className="btn btn-soft btn-lg" onClick={() => onDemo("student")}>Try Student Demo</button>
+            <button className="btn btn-ghost btn-lg" onClick={() => onDemo("teacher")}>Teacher Demo</button>
           </div>
           <div className="hero-proof">
             <div><strong>01</strong><span>Explore</span></div>
@@ -236,7 +237,7 @@ function Landing({ onDemo, onLogin }: { onDemo: (role: "student" | "teacher") =>
   );
 }
 
-function LoginModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (profile: Profile) => void }) {
+function LoginModal({ onClose, onSuccess, onSetup }: { onClose: () => void; onSuccess: (profile: Profile) => void; onSetup: () => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -279,7 +280,94 @@ function LoginModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (p
           {error && <div className="form-error">{error}</div>}
           <button className="btn btn-primary btn-lg full" disabled={busy}>{busy ? <Loader2 className="spin" size={17} /> : <ArrowRight size={17} />} {busy ? "Signing in…" : "Sign in"}</button>
         </form>
-        <div className="demo-hint"><Sparkles size={16} /><span>No account yet? Close this window and use Student or Teacher Demo.</span></div>
+        <div className="demo-hint setup-login-hint"><Sparkles size={16} /><span>First real use?</span><button type="button" onClick={onSetup}>Set up the first admin account</button></div>
+      </div>
+    </div>
+  );
+}
+
+function SetupAdminModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (profile: Profile) => void }) {
+  const [setupKey, setSetupKey] = useState("");
+  const [name, setName] = useState("Yusril Maulana");
+  const [username, setUsername] = useState("yusril");
+  const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setError("");
+    if(!/^\d{6}$/.test(pin)){setError("PIN must contain exactly 6 digits.");return;}
+    if(pin!==confirmPin){setError("PIN confirmation does not match.");return;}
+
+    const supabase=getSupabase();
+    if(!supabase){setError("Supabase is not configured.");return;}
+
+    setBusy(true);
+    const {data,error:invokeError}=await supabase.functions.invoke("bootstrap-trial",{
+      body:{token:setupKey.trim(),name:name.trim(),username:username.trim().toLowerCase(),pin}
+    });
+
+    if(invokeError||!data?.ok){
+      let message=data?.error||invokeError?.message||"Could not set up the admin account.";
+      const context=(invokeError as {context?:Response}|null)?.context;
+      if(context){
+        try{
+          const payload=await context.clone().json();
+          if(payload?.error)message=payload.error;
+        }catch{}
+      }
+      setBusy(false);
+      setError(message);
+      return;
+    }
+
+    const email=`${username.trim().toLowerCase()}@englishloop.local`;
+    const {data:loginData,error:loginError}=await supabase.auth.signInWithPassword({email,password:pin});
+    if(loginError||!loginData.user){
+      setBusy(false);
+      setError("Admin was created, but automatic sign-in failed. Close this window and sign in normally.");
+      return;
+    }
+
+    const {data:profileData,error:profileError}=await supabase.from("profiles")
+      .select("id,name,username,role,class_id,cefr_level")
+      .eq("id",loginData.user.id)
+      .single();
+
+    setBusy(false);
+    if(profileError||!profileData){
+      setError("Admin account exists, but the profile could not be loaded.");
+      return;
+    }
+    onSuccess(profileData as Profile);
+  }
+
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <div className="setup-admin-modal" onMouseDown={(e)=>e.stopPropagation()}>
+        <button className="icon-btn modal-close" onClick={onClose}><X size={18}/></button>
+        <Brand />
+        <div className="setup-admin-copy">
+          <div className="eyebrow"><Settings size={14}/> ONE-TIME REAL SETUP</div>
+          <h2>Create the first English Loop admin.</h2>
+          <p>This runs only once. After the first admin is created, the bootstrap route locks automatically. Students are then created from Admin Settings.</p>
+        </div>
+
+        <form className="stack-form" onSubmit={submit}>
+          <label><span>Setup Key</span><input type="password" value={setupKey} onChange={(e)=>setSetupKey(e.target.value)} placeholder="Paste the one-time setup key" required autoFocus/></label>
+          <label><span>Admin name</span><input value={name} onChange={(e)=>setName(e.target.value)} required/></label>
+          <label><span>Admin username</span><input value={username} onChange={(e)=>setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g,""))} minLength={3} maxLength={32} required/></label>
+          <div className="form-grid two">
+            <label><span>Choose 6-digit PIN</span><input type="password" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} value={pin} onChange={(e)=>setPin(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="••••••" required/></label>
+            <label><span>Confirm PIN</span><input type="password" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} value={confirmPin} onChange={(e)=>setConfirmPin(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="••••••" required/></label>
+          </div>
+          {error&&<div className="form-error">{error}</div>}
+          <button className="btn btn-primary btn-lg full" disabled={busy}>{busy?<Loader2 className="spin" size={17}/>:<ArrowRight size={17}/>} {busy?"Creating real workspace…":"Create admin & enter English Loop"}</button>
+        </form>
+
+        <div className="setup-security-note"><CheckCircle2 size={16}/><span>No sample students are created. After login, use <strong>Admin Settings → Students & PIN Access</strong> to add your own trial students.</span></div>
       </div>
     </div>
   );
@@ -1050,6 +1138,7 @@ export default function EnglishLoopApp() {
   const [isDemo, setIsDemo] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [showLogin, setShowLogin] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
   const [booting, setBooting] = useState(true);
 
   useEffect(() => {
@@ -1079,9 +1168,10 @@ export default function EnglishLoopApp() {
 
   if (booting) return <div className="boot-screen"><div className="boot-logo"><Brand /></div><Loader2 className="spin" /></div>;
   return <>
-    {mode === "landing" && <Landing onDemo={startDemo} onLogin={() => setShowLogin(true)} />}
+    {mode === "landing" && <Landing onDemo={startDemo} onLogin={() => setShowLogin(true)} onSetup={() => setShowSetup(true)} />}
     {mode === "student" && profile && <StudentShell profile={profile} isDemo={isDemo} onLogout={logout} />}
     {mode === "teacher" && profile && <TeacherShell profile={profile} isDemo={isDemo} onLogout={logout} />}
-    {showLogin && <LoginModal onClose={() => setShowLogin(false)} onSuccess={(p) => { setProfile(p); setIsDemo(false); setMode(p.role === "student" ? "student" : "teacher"); setShowLogin(false); }} />}
+    {showLogin && <LoginModal onClose={() => setShowLogin(false)} onSetup={() => { setShowLogin(false); setShowSetup(true); }} onSuccess={(p) => { setProfile(p); setIsDemo(false); setMode(p.role === "student" ? "student" : "teacher"); setShowLogin(false); }} />}
+    {showSetup && <SetupAdminModal onClose={() => setShowSetup(false)} onSuccess={(p) => { setProfile(p); setIsDemo(false); setMode("teacher"); setShowSetup(false); }} />}
   </>;
 }
