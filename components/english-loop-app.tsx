@@ -494,8 +494,6 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   const [vocabulary, setVocabulary] = useState<Array<{ id?: string; word: string; meaning?: string | null }>>([]);
   const [selectedActivity, setSelectedActivity] = useState<ActivityItem | null>(null);
   const [selectedReview, setSelectedReview] = useState<StudentReviewItem | null>(null);
-  const [filter, setFilter] = useState<"all" | "watch" | "listen" | "read">("all");
-  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(!isDemo);
 
   const loadData = useCallback(async () => {
@@ -536,17 +534,20 @@ function StudentShell({ profile, isDemo, onLogout }: { profile: Profile; isDemo:
   ];
   const assignedActivityIds = useMemo(() => new Set(assignments.map((item) => item.activity_id)), [assignments]);
   const assignedActivities = activities.filter((activity) => assignedActivityIds.has(activity.id));
-  const taskActivities = activities.slice().sort((a, b) => {
+  const taskActivities = activities
+    .filter((activity) => {
+      const content = contents.find((item) => item.id === activity.content_id);
+      return assignedActivityIds.has(activity.id) || content?.cefr_level === profile.cefr_level;
+    })
+    .sort((a, b) => {
     const aAssigned = assignedActivityIds.has(a.id) ? 0 : 1;
     const bAssigned = assignedActivityIds.has(b.id) ? 0 : 1;
     if (aAssigned !== bAssigned) return aAssigned - bAssigned;
     return (a.pathway_order ?? 999) - (b.pathway_order ?? 999);
-  });
+    });
   const incomplete = assignedActivities.find((a) => !responses.some((r) => r.activity_id === a.id && r.status === "submitted"))
     || activities.find((a) => !responses.some((r) => r.activity_id === a.id && r.status === "submitted"))
     || activities[0];
-  const filteredContents = contents.filter((item) => (filter === "all" || item.content_type === filter) && `${item.title} ${item.topic}`.toLowerCase().includes(search.toLowerCase()));
-
   const speakingByResponse = useMemo(() => Object.fromEntries(speaking.map((item) => [item.response_id, item])), [speaking]);
   const feedbackBySpeaking = useMemo(() => Object.fromEntries(feedback.map((item) => [item.speaking_id, item])), [feedback]);
   const activityById = useMemo(() => Object.fromEntries(activities.map((item) => [item.id, item])), [activities]);
