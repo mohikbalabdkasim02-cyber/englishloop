@@ -44,3 +44,18 @@ npm run dev
 ```bash
 npm run build
 ```
+
+
+## Teacher onboarding
+
+Authenticated teacher/admin accounts can create student accounts from **Teacher → Students → Add student**. The browser calls the `admin-create-student` Supabase Edge Function. The function verifies the caller, performs Auth admin work server-side, and never exposes a secret/service key to the browser.
+
+## Health check
+
+After deployment, open:
+
+```
+/api/health
+```
+
+A healthy deployment returns `{ "ok": true, ... }`.
