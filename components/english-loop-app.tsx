@@ -256,10 +256,10 @@ function LoginModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (p
       <div className="login-modal" onMouseDown={(e) => e.stopPropagation()}>
         <button className="icon-btn modal-close" onClick={onClose}><X size={18} /></button>
         <Brand />
-        <div className="login-copy"><h2>Welcome back.</h2><p>Sign in with your English Loop username and password.</p></div>
+        <div className="login-copy"><h2>Welcome back.</h2><p>Sign in with your English Loop username and 6-digit PIN.</p></div>
         <form onSubmit={submit} className="stack-form">
           <label><span>Username</span><input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="e.g. naila" required autoFocus /></label>
-          <label><span>Password</span><input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Your password" required /></label>
+          <label><span>PIN</span><input value={password} onChange={(e) => setPassword(e.target.value.replace(/\D/g, "").slice(0, 6))} type="password" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} placeholder="6-digit PIN" required /></label>
           {error && <div className="form-error">{error}</div>}
           <button className="btn btn-primary btn-lg full" disabled={busy}>{busy ? <Loader2 className="spin" size={17} /> : <ArrowRight size={17} />} {busy ? "Signing in…" : "Sign in"}</button>
         </form>
